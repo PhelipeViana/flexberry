@@ -1,2 +1,2 @@
 # flexberry
-ORM em golang
+ORM em golangs

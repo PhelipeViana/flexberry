@@ -86,7 +86,14 @@ func scan(projectRoot string, cfg *config.Config, lenient bool) (Result, error) 
 	var warnings []string
 	for _, relative := range files {
 		if problem, err := missingLocalImport(projectRoot, modulePath, relative); err != nil {
-			return Result{}, err
+			if !lenient {
+				return Result{}, err
+			}
+			warnings = append(warnings, fmt.Sprintf(
+				"%s ignorado: arquivo vazio ou código Go inválido: %v",
+				relative, err,
+			))
+			continue
 		} else if problem != "" {
 			if !lenient {
 				return Result{}, fmt.Errorf("%s", problem)
@@ -96,7 +103,21 @@ func scan(projectRoot string, cfg *config.Config, lenient bool) (Result, error) 
 		}
 		found, err := scanFile(projectRoot, modulePath, relative, cfg.Entities.Overrides)
 		if err != nil {
+			if lenient {
+				warnings = append(warnings, fmt.Sprintf(
+					"%s ignorado: arquivo vazio ou código Go inválido: %v",
+					relative, err,
+				))
+				continue
+			}
 			return Result{}, err
+		}
+		if len(found) == 0 && lenient {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s ignorado: não contém entidade exportada com campos mapeados pela tag db",
+				relative,
+			))
+			continue
 		}
 		entities = append(entities, found...)
 	}

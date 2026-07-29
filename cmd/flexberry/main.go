@@ -537,7 +537,7 @@ func runGenerate(args []string) error {
 	cfg.Entities = ormConfig.Entities
 	cfg.Generate.Output = ormConfig.Output.Path
 	cfg.Generate.Package = ormConfig.Output.Package
-	result, err := scanner.Scan(root, cfg)
+	result, err := scanner.ScanLenient(root, cfg)
 	if err != nil {
 		return err
 	}
@@ -551,6 +551,7 @@ func runGenerate(args []string) error {
 			fmt.Printf("  - %s.%s -> %s\n", entity.Package, entity.Name, entity.Table)
 		}
 		fmt.Printf("Dry-run: %d arquivo(s) seriam gerados em %s\n", len(files), cfg.Generate.Output)
+		printScanWarnings(result.Warnings)
 		return nil
 	}
 	written, err := generator.Write(root, cfg, files)
@@ -560,6 +561,7 @@ func runGenerate(args []string) error {
 	for _, generatedPath := range written {
 		fmt.Printf("  + %s\n", generatedPath)
 	}
+	printScanWarnings(result.Warnings)
 	return nil
 }
 

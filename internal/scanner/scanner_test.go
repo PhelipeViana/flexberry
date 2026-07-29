@@ -55,6 +55,28 @@ func TestPruneUnresolvedRelationsRemovesTransitiveDependents(t *testing.T) {
 	}
 }
 
+func TestScanLenientWarnsAboutEmptyAndUnmappedFiles(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "go.mod"), "module example.test/app\n")
+	writeTestFile(t, filepath.Join(root, "internal/modules/vazio/domain/vazio.go"), "")
+	writeTestFile(t, filepath.Join(root, "internal/modules/semcampos/domain/tipo.go"), "package domain\ntype Tipo string\n")
+
+	cfg := &config.Config{Entities: config.EntitiesConfig{
+		Paths: []string{"internal/modules/**/domain/*.go"},
+	}}
+	result, err := ScanLenient(root, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Warnings) != 2 {
+		t.Fatalf("esperados 2 alertas, obtidos %#v", result.Warnings)
+	}
+	joined := strings.Join(result.Warnings, "\n")
+	if !strings.Contains(joined, "arquivo vazio") || !strings.Contains(joined, "campos mapeados") {
+		t.Fatalf("alertas incompletos: %s", joined)
+	}
+}
+
 func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

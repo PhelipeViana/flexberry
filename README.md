@@ -73,8 +73,9 @@ Os arquivos contêm comentários explicando cada campo.
 ```
 
 `migrate reload` compara as entidades com o snapshot monitorado e cria um plano
-neutro e imutável. `migrate run` converte esse plano para cada dialeto, aplica
-em todas as conexões e registra o checksum na tabela `migrations_flex`.
+neutro, imutável e nomeado por timestamp. `migrate run` converte esse plano
+para o dialeto da conexão padrão e registra o checksum em `migrations_flex`.
+Para migrar outro banco, altere `DB_CONNECTION` no `.env`.
 
 O package Go do ORM e das factories é inferido automaticamente pelo último
 diretório configurado em `path`; não é necessário informar `package`.

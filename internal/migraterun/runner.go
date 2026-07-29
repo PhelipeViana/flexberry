@@ -45,30 +45,25 @@ func Run(root string, base *config.Config, cfg config.MigrateConfig) error {
 	}
 
 	cliui.PrintTitle("Flexberry · Migrations")
-	failures := 0
-	for _, name := range base.ConnectionNames() {
-		connection, resolveErr := base.ResolvedConnection(name, config.OSLookup)
-		if resolveErr != nil {
-			fmt.Printf("%s %s ERRO\n  %s\n", cliui.Failure("✗"), name, resolveErr)
-			failures++
-			continue
-		}
-		fmt.Printf("%s %s (%s)\n", cliui.Info("→"), name, connection.Dialect)
-		applied, skipped, runErr := runConnection(connection, cfg.History, files)
-		if runErr != nil {
-			fmt.Printf("  %s %s\n", cliui.Failure("✗ ERRO:"), runErr)
-			failures++
-			continue
-		}
-		fmt.Printf("  %s %d aplicada(s), %d já executada(s)\n", cliui.Success("✓ OK"), applied, skipped)
+	name, err := base.DefaultConnection(config.OSLookup)
+	if err != nil {
+		return err
 	}
-	if failures > 0 {
+	connection, err := base.ResolvedConnection(name, config.OSLookup)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s %s (%s) %s\n", cliui.Info("→"), name, connection.Dialect, cliui.Info("[DEFAULT]"))
+	applied, skipped, runErr := runConnection(connection, cfg.History, files)
+	if runErr != nil {
+		fmt.Printf("  %s %s\n", cliui.Failure("✗ ERRO:"), runErr)
 		return cliui.NewUserError(
-			fmt.Sprintf("%d conexão(ões) não concluíram as migrations.", failures),
-			"Corrija as conexões indicadas acima e execute Migrate Run novamente.",
+			"A conexão padrão não concluiu as migrations.",
+			"Corrija a conexão indicada acima e execute Migrate Run novamente.",
 		)
 	}
-	fmt.Println("\n" + cliui.Success("✓ Migrations atualizadas em todas as conexões."))
+	fmt.Printf("  %s %d aplicada(s), %d já executada(s)\n", cliui.Success("✓ OK"), applied, skipped)
+	fmt.Println("\n" + cliui.Success("✓ Migrations atualizadas na conexão padrão."))
 	return nil
 }
 
@@ -82,7 +77,7 @@ func loadPlans(folder string) ([]migrationFile, error) {
 	}
 	var result []migrationFile
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), "_schema.json") {
+		if entry.IsDir() || (!strings.HasSuffix(entry.Name(), "_migration.json") && !strings.HasSuffix(entry.Name(), "_schema.json")) {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(folder, entry.Name()))
@@ -184,6 +179,27 @@ func executeOperation(ctx context.Context, db *sql.DB, dialect, schema string, o
 		if _, err := db.ExecContext(ctx, query); err != nil {
 			return fmt.Errorf("adicionar %s.%s: %w", operation.Table, operation.Column.Name, err)
 		}
+	case "alter_column":
+		if operation.Column == nil {
+			return fmt.Errorf("operação alter_column inválida")
+		}
+		for _, query := range alterColumnSQL(dialect, schema, operation.Table, *operation.Column) {
+			if _, err := db.ExecContext(ctx, query); err != nil {
+				return fmt.Errorf("alterar %s.%s: %w", operation.Table, operation.Column.Name, err)
+			}
+		}
+	case "drop_column":
+		if operation.Column == nil {
+			return fmt.Errorf("operação drop_column inválida")
+		}
+		query := fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", qualified(dialect, schema, operation.Table), quote(dialect, operation.Column.Name))
+		if _, err := db.ExecContext(ctx, query); err != nil {
+			return fmt.Errorf("remover %s.%s: %w", operation.Table, operation.Column.Name, err)
+		}
+	case "drop_table":
+		if _, err := db.ExecContext(ctx, dropTableSQL(dialect, schema, operation.Table)); err != nil {
+			return fmt.Errorf("remover tabela %s: %w", operation.Table, err)
+		}
 	case "add_foreign_key":
 		if operation.ForeignKey == nil || !created[operation.Table] {
 			return nil
@@ -282,6 +298,42 @@ func createTableSQL(dialect, schema, table string, columns []migrategen.Column) 
 		definitions = append(definitions, columnDefinition(dialect, column, true))
 	}
 	return fmt.Sprintf("CREATE TABLE %s (%s)", qualified(dialect, schema, table), strings.Join(definitions, ", ")), nil
+}
+
+func alterColumnSQL(dialect, schema, table string, column migrategen.Column) []string {
+	target, name := qualified(dialect, schema, table), quote(dialect, column.Name)
+	definition := columnDefinition(dialect, column, false)
+	switch dialect {
+	case "postgres":
+		dataType := strings.TrimSpace(strings.TrimPrefix(definition, name))
+		dataType = strings.TrimSuffix(strings.TrimSuffix(dataType, " NOT NULL"), " NULL")
+		nullability := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET NOT NULL", target, name)
+		if column.Nullable {
+			nullability = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL", target, name)
+		}
+		return []string{
+			fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s", target, name, dataType),
+			nullability,
+		}
+	case "oracle":
+		return []string{fmt.Sprintf("ALTER TABLE %s MODIFY (%s)", target, definition)}
+	case "mysql":
+		return []string{fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s", target, definition)}
+	default:
+		return []string{fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s", target, definition)}
+	}
+}
+
+func dropTableSQL(dialect, schema, table string) string {
+	target := qualified(dialect, schema, table)
+	switch dialect {
+	case "postgres":
+		return "DROP TABLE " + target + " CASCADE"
+	case "oracle":
+		return "DROP TABLE " + target + " CASCADE CONSTRAINTS PURGE"
+	default:
+		return "DROP TABLE " + target
+	}
 }
 
 func columnDefinition(dialect string, column migrategen.Column, allowIdentity bool) string {

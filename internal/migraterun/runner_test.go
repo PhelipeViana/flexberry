@@ -40,3 +40,14 @@ func TestQualifiedIdentifiers(t *testing.T) {
 		t.Fatalf("mysql inesperado: %s", got)
 	}
 }
+
+func TestAlterAndDropSQL(t *testing.T) {
+	column := migrategen.Column{Name: "descricao", Type: "string", Nullable: true}
+	postgres := alterColumnSQL("postgres", "public", "produtos", column)
+	if len(postgres) != 2 || !strings.Contains(postgres[0], "TYPE VARCHAR(255)") {
+		t.Fatalf("alter postgres inesperado: %#v", postgres)
+	}
+	if got := dropTableSQL("oracle", "APP", "temporarios"); !strings.Contains(got, "CASCADE CONSTRAINTS PURGE") {
+		t.Fatalf("drop oracle inesperado: %s", got)
+	}
+}

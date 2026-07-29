@@ -359,7 +359,7 @@ func runMigrate(args []string) error {
 			return err
 		}
 		if result.Unchanged {
-			fmt.Println(cliui.Muted("✓ Migrate Reload: nenhuma alteração encontrada nas entidades."))
+			fmt.Println(cliui.Muted("✓ Migrate Reload: não houve modificação nas entidades monitoradas."))
 			return nil
 		}
 		fmt.Printf("%s %s (%d operação(ões))\n", cliui.Success("✓ Migration gerada:"), result.Path, result.Operations)

@@ -87,11 +87,7 @@ func Generate(root string, cfg config.MigrateConfig, entities []scanner.Entity) 
 		return Result{Unchanged: true}, nil
 	}
 
-	index, err := nextIndex(output)
-	if err != nil {
-		return Result{}, err
-	}
-	migration := fmt.Sprintf("%04d_schema.json", index)
+	migration := nextMigrationName(output, time.Now())
 	plan := Plan{Version: 1, Migration: migration, CreatedAt: time.Now().UTC(), Operations: operations}
 	data, err := json.MarshalIndent(plan, "", "  ")
 	if err != nil {
@@ -191,24 +187,34 @@ func loadSnapshot(path string) (Snapshot, error) {
 func diff(previous, current Snapshot) ([]Operation, error) {
 	oldTables := tableMap(previous.Tables)
 	newTables := tableMap(current.Tables)
+	var operations []Operation
 	for name, oldTable := range oldTables {
 		newTable, exists := newTables[name]
 		if !exists {
-			return nil, fmt.Errorf("remoção automática da tabela %s foi bloqueada; migrations destrutivas exigirão confirmação em uma fase futura", name)
+			operations = append(operations, Operation{Kind: "drop_table", Table: name})
+			continue
 		}
 		oldColumns, newColumns := columnMap(oldTable.Columns), columnMap(newTable.Columns)
 		for column, oldValue := range oldColumns {
 			newValue, exists := newColumns[column]
 			if !exists {
-				return nil, fmt.Errorf("remoção automática de %s.%s foi bloqueada", name, column)
+				if foreignKeyColumn(oldTable, column) {
+					return nil, fmt.Errorf("remoção de %s.%s foi bloqueada porque a coluna participa de um relacionamento", name, column)
+				}
+				copyColumn := oldValue
+				operations = append(operations, Operation{Kind: "drop_column", Table: name, Column: &copyColumn})
+				continue
 			}
 			if oldValue.Type != newValue.Type || oldValue.Nullable != newValue.Nullable {
-				return nil, fmt.Errorf("alteração automática de tipo/nulabilidade em %s.%s foi bloqueada", name, column)
+				if oldValue.PrimaryKey != newValue.PrimaryKey {
+					return nil, fmt.Errorf("alteração automática de chave primária em %s.%s foi bloqueada", name, column)
+				}
+				copyColumn := newValue
+				operations = append(operations, Operation{Kind: "alter_column", Table: name, Column: &copyColumn})
 			}
 		}
 	}
 
-	var operations []Operation
 	for _, table := range current.Tables {
 		oldTable, exists := oldTables[table.Name]
 		if !exists {
@@ -235,18 +241,14 @@ func diff(previous, current Snapshot) ([]Operation, error) {
 	return operations, nil
 }
 
-func nextIndex(output string) (int, error) {
-	entries, err := os.ReadDir(output)
-	if err != nil {
-		return 0, err
-	}
-	count := 0
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), "_schema.json") {
-			count++
+func nextMigrationName(output string, now time.Time) string {
+	for {
+		name := now.Format("2006_01_02_150405") + "_migration.json"
+		if _, err := os.Stat(filepath.Join(output, name)); os.IsNotExist(err) {
+			return name
 		}
+		now = now.Add(time.Second)
 	}
-	return count + 1, nil
 }
 
 func tableMap(values []Table) map[string]Table {
@@ -263,6 +265,15 @@ func columnMap(values []Column) map[string]Column {
 		result[value.Name] = value
 	}
 	return result
+}
+
+func foreignKeyColumn(table Table, column string) bool {
+	for _, foreignKey := range table.ForeignKeys {
+		if foreignKey.Column == column {
+			return true
+		}
+	}
+	return false
 }
 
 func relationTypeName(value string) string {

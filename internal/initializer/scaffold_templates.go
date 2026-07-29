@@ -63,6 +63,27 @@ output:
 overrides: {}
 `
 
+const MigrateConfigTemplateV1 = `# Versão do formato das migrations.
+version: 1
+
+# Entidades monitoradas para criação e evolução das tabelas.
+entities:
+  paths:
+    - internal/modules/**/domain/*.go
+
+  exclude:
+    - "**/*_test.go"
+    - "**/*.gen.go"
+
+# Planos neutros gerados pelo Migrate Reload.
+# Um mesmo plano será convertido para os quatro bancos durante o Run.
+output:
+  path: internal/database/migrations
+
+# Histórico criado automaticamente em cada banco.
+history_table: migrations_flex
+`
+
 const FactoryConfigTemplateV3 = `# Versão do formato das factories.
 version: 1
 

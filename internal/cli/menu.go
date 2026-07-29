@@ -24,6 +24,8 @@ var allowedCommands = map[string]bool{
 	"orm sync":          true,
 	"orm reload":        true,
 	"orm run":           true,
+	"migrate reload":    true,
+	"migrate run":       true,
 	"factory create":    true,
 	"factory reload":    true,
 	"factory run":       true,
@@ -143,10 +145,12 @@ func validateManifest(manifest Manifest) error {
 func fallbackManifest() Manifest {
 	return Manifest{Version: 1, Message: "Ferramentas do projeto", Items: []MenuEntry{
 		{Label: "Connection (relatório das conexões do YAML)", Command: "connection report", Enabled: true},
-		{Label: "ORM Reload (atualiza e recria)", Command: "orm reload", Enabled: true},
-		{Label: "ORM Run (roda a atualização)", Command: "orm run", Enabled: true},
+		{Label: "MIGRATE Reload (atualiza e recria)", Command: "migrate reload", Enabled: true},
+		{Label: "MIGRATE Run (roda a atualização)", Command: "migrate run", Enabled: true},
 		{Label: "Factories Reload (atualiza e recria)", Command: "factory reload", Enabled: true},
 		{Label: "Factories Run (executa as factories)", Command: "factory run", Enabled: true},
+		{Label: "ORM Reload (atualiza e recria)", Command: "orm reload", Enabled: true},
+		{Label: "ORM Run (roda a atualização)", Command: "orm run", Enabled: true},
 		{Label: "Flexberry Init (instala ou repara a configuração)", Command: "config install", Enabled: true},
 		{Label: "Sair", Command: "exit", Enabled: true},
 	}}

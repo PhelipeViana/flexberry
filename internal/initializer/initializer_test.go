@@ -18,8 +18,8 @@ func TestRunCreatesInitialStructureAndPreservesExistingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Created) != 5 {
-		t.Fatalf("foram criados %d arquivos, esperado 5", len(result.Created))
+	if len(result.Created) != 6 {
+		t.Fatalf("foram criados %d arquivos, esperado 6", len(result.Created))
 	}
 	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(config.DefaultRelativePath))); err != nil {
 		t.Fatal(err)

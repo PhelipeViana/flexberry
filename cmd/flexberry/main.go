@@ -17,6 +17,8 @@ import (
 	"github.com/PhelipeViana/flexberry/internal/factoryrun"
 	"github.com/PhelipeViana/flexberry/internal/generator"
 	"github.com/PhelipeViana/flexberry/internal/initializer"
+	"github.com/PhelipeViana/flexberry/internal/migrategen"
+	"github.com/PhelipeViana/flexberry/internal/migraterun"
 	"github.com/PhelipeViana/flexberry/internal/project"
 	"github.com/PhelipeViana/flexberry/internal/scanner"
 )
@@ -49,24 +51,29 @@ func run(args []string) error {
 	case "config":
 		return runConfig(args[1:])
 	case "orm":
-		if err := ensureFlexberryConfigured(); err != nil {
+		if err := ensureFlexberryConfigured(config.ORMRelativePath); err != nil {
 			return err
 		}
 		return runORM(args[1:])
+	case "migrate":
+		if err := ensureFlexberryConfigured(config.MigrateRelativePath); err != nil {
+			return err
+		}
+		return runMigrate(args[1:])
 	case "factory":
-		if err := ensureFlexberryConfigured(); err != nil {
+		if err := ensureFlexberryConfigured(config.ORMRelativePath, config.FactoryRelativePath); err != nil {
 			return err
 		}
 		return runFactory(args[1:])
 	case "init":
 		return runInit(args[1:])
 	case "validate":
-		if err := ensureFlexberryConfigured(); err != nil {
+		if err := ensureFlexberryConfigured(config.ORMRelativePath); err != nil {
 			return err
 		}
 		return runValidate(args[1:])
 	case "run":
-		if err := ensureFlexberryConfigured(); err != nil {
+		if err := ensureFlexberryConfigured(config.ORMRelativePath); err != nil {
 			return err
 		}
 		return runGenerate(args[1:])
@@ -81,7 +88,7 @@ func run(args []string) error {
 	}
 }
 
-func ensureFlexberryConfigured() error {
+func ensureFlexberryConfigured(required ...string) error {
 	root, err := project.FindRoot(".")
 	if err != nil {
 		return cliui.NewUserError(
@@ -89,13 +96,21 @@ func ensureFlexberryConfigured() error {
 			"Execute o Flexberry em uma pasta que contenha um arquivo go.mod.",
 		)
 	}
-	path := filepath.Join(root, filepath.FromSlash(config.DefaultRelativePath))
-	content, readErr := os.ReadFile(path)
-	if readErr == nil && strings.TrimSpace(string(content)) != "" {
-		return nil
+	paths := append([]string{config.DefaultRelativePath}, required...)
+	var missing []string
+	for _, relative := range paths {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		content, readErr := os.ReadFile(path)
+		if readErr == nil && strings.TrimSpace(string(content)) != "" {
+			continue
+		}
+		if readErr != nil && !os.IsNotExist(readErr) {
+			return fmt.Errorf("verificar configuração Flexberry: %w", readErr)
+		}
+		missing = append(missing, relative)
 	}
-	if readErr != nil && !os.IsNotExist(readErr) {
-		return fmt.Errorf("verificar configuração Flexberry: %w", readErr)
+	if len(missing) == 0 {
+		return nil
 	}
 
 	if _, initErr := initializer.Run(root, false); initErr != nil {
@@ -110,8 +125,8 @@ func ensureFlexberryConfigured() error {
 		}}
 	}
 	return cliui.NewUserError(
-		"A configuração do Flexberry não existia e foi criada automaticamente.",
-		"Preencha internal/flexberry/flexberry.yaml e .env; depois execute o comando novamente.",
+		"Arquivos de configuração ausentes ou vazios foram criados automaticamente: "+strings.Join(missing, ", ")+".",
+		"Revise os arquivos criados e .env; depois execute o comando novamente.",
 	)
 }
 
@@ -256,6 +271,11 @@ func runConfigRemove(args []string) error {
 			return err
 		}
 	}
+	if migrateConfig, loadErr := config.LoadMigrate(filepath.Join(root, filepath.FromSlash(config.MigrateRelativePath))); loadErr == nil {
+		if err := removeConfiguredPath(root, migrateConfig.Output.Path); err != nil {
+			return err
+		}
+	}
 	if err := os.RemoveAll(target); err != nil {
 		return fmt.Errorf("remover configuração Flexberry: %w", err)
 	}
@@ -308,6 +328,46 @@ func runFactory(args []string) error {
 		return executeFactories()
 	default:
 		return fmt.Errorf("ação de factory %q desconhecida", args[0])
+	}
+}
+
+func runMigrate(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("use migrate reload ou migrate run")
+	}
+	root, err := project.FindRoot(".")
+	if err != nil {
+		return err
+	}
+	base, err := config.Load(filepath.Join(root, filepath.FromSlash(config.DefaultRelativePath)))
+	if err != nil {
+		return err
+	}
+	migrateConfig, err := config.LoadMigrate(filepath.Join(root, filepath.FromSlash(config.MigrateRelativePath)))
+	if err != nil {
+		return err
+	}
+	switch args[0] {
+	case "reload":
+		base.Entities = migrateConfig.Entities
+		scanned, err := scanner.Scan(root, base)
+		if err != nil {
+			return err
+		}
+		result, err := migrategen.Generate(root, migrateConfig, scanned.Entities)
+		if err != nil {
+			return err
+		}
+		if result.Unchanged {
+			fmt.Println(cliui.Muted("✓ Migrate Reload: nenhuma alteração encontrada nas entidades."))
+			return nil
+		}
+		fmt.Printf("%s %s (%d operação(ões))\n", cliui.Success("✓ Migration gerada:"), result.Path, result.Operations)
+		return nil
+	case "run":
+		return migraterun.Run(root, base, migrateConfig)
+	default:
+		return fmt.Errorf("ação de migrate %q desconhecida; use migrate reload ou migrate run", args[0])
 	}
 }
 
@@ -592,6 +652,8 @@ Uso:
   flexberry config update           cria configurações ausentes
   flexberry config remove --force   remove internal/flexberry
   flexberry connection report       exibe o relatório das conexões
+  flexberry migrate reload          gera migrations pelas entidades
+  flexberry migrate run             aplica migrations em todas as conexões
   flexberry orm reload              recria completamente o ORM
   flexberry orm run                 atualiza o ORM
   flexberry factory reload          cria ou atualiza factories

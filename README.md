@@ -1,6 +1,6 @@
 # Flexberry
 
-CLI experimental para geração de ORM e factories em projetos Go.
+CLI experimental para migrations, ORM e factories em projetos Go.
 
 ## Instalação
 
@@ -23,11 +23,15 @@ comandos conhecidos; ele não executa scripts arbitrários.
 .\flexberry.exe config remove
 
 .\flexberry.exe connection report
-.\flexberry.exe orm reload
-.\flexberry.exe orm run
+
+.\flexberry.exe migrate reload
+.\flexberry.exe migrate run
 
 .\flexberry.exe factory reload
 .\flexberry.exe factory run
+
+.\flexberry.exe orm reload
+.\flexberry.exe orm run
 
 .\flexberry.exe validate
 .\flexberry.exe version
@@ -42,11 +46,13 @@ tempo de resposta e destaca a conexão padrão.
 ```text
 internal/flexberry/
 ├── flexberry.yaml
+├── migrate.yaml
 ├── orm.yaml
 └── factory.yaml
 ```
 
 - `flexberry.yaml`: ambientes e conexões.
+- `migrate.yaml`: entidades monitoradas e histórico das migrations.
 - `orm.yaml`: entidades de origem e destino do ORM.
 - `factory.yaml`: destino, defaults e expressões das factories.
 
@@ -57,12 +63,18 @@ Os arquivos contêm comentários explicando cada campo.
 ```powershell
 .\flexberry.exe config install
 
-# Revise os três arquivos YAML.
+# Revise os quatro arquivos YAML.
 
-.\flexberry.exe orm reload
+.\flexberry.exe migrate reload
+.\flexberry.exe migrate run
 .\flexberry.exe factory reload
 .\flexberry.exe factory run
+.\flexberry.exe orm reload
 ```
+
+`migrate reload` compara as entidades com o snapshot monitorado e cria um plano
+neutro e imutável. `migrate run` converte esse plano para cada dialeto, aplica
+em todas as conexões e registra o checksum na tabela `migrations_flex`.
 
 O package Go do ORM e das factories é inferido automaticamente pelo último
 diretório configurado em `path`; não é necessário informar `package`.

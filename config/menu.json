@@ -8,13 +8,13 @@
       "enabled": true
     },
     {
-      "label": "ORM Reload (atualiza e recria)",
-      "command": "orm reload",
+      "label": "MIGRATE Reload (atualiza e recria)",
+      "command": "migrate reload",
       "enabled": true
     },
     {
-      "label": "ORM Run (roda a atualização)",
-      "command": "orm run",
+      "label": "MIGRATE Run (roda a atualização)",
+      "command": "migrate run",
       "enabled": true
     },
     {
@@ -25,6 +25,16 @@
     {
       "label": "Factories Run (executa as factories)",
       "command": "factory run",
+      "enabled": true
+    },
+    {
+      "label": "ORM Reload (atualiza e recria)",
+      "command": "orm reload",
+      "enabled": true
+    },
+    {
+      "label": "ORM Run (roda a atualização)",
+      "command": "orm run",
       "enabled": true
     },
     {

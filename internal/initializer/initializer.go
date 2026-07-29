@@ -23,6 +23,7 @@ func Run(projectRoot string, force bool) (Result, error) {
 	}{
 		{config.DefaultRelativePath, ConnectionConfigTemplateV2, false},
 		{config.ORMRelativePath, ORMConfigTemplateV2, false},
+		{config.MigrateRelativePath, MigrateConfigTemplateV1, false},
 		{"internal/flexberry/factory.yaml", FactoryConfigTemplateV3, false},
 		{".env", EnvTemplate, true},
 		{".env.example", EnvTemplate, false},

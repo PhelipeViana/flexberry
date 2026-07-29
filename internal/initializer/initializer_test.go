@@ -83,7 +83,7 @@ func TestRunRepairsBlankConfiguration(t *testing.T) {
 
 func TestRunPreservesExistingRootEnv(t *testing.T) {
 	root := t.TempDir()
-	const custom = "DATABASE_CONNECTION=legacy\n"
+	const custom = "DB_DIALECT=legacy\n"
 	if err := os.WriteFile(filepath.Join(root, ".env"), []byte(custom), 0o600); err != nil {
 		t.Fatal(err)
 	}

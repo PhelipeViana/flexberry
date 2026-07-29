@@ -38,20 +38,20 @@ comandos conhecidos; ele não executa scripts arbitrários.
 ```
 
 `connection report` abre e autentica em todas as conexões do
-`flexberry.yaml`. O relatório mostra status, dialeto, schema, versão do banco,
+`connection.yaml`. O relatório mostra status, dialeto, schema, versão do banco,
 tempo de resposta e destaca a conexão padrão.
 
 `config install` cria somente configurações editáveis:
 
 ```text
 internal/flexberry/
-├── flexberry.yaml
+├── connection.yaml
 ├── migrate.yaml
 ├── orm.yaml
 └── factory.yaml
 ```
 
-- `flexberry.yaml`: ambientes e conexões.
+- `connection.yaml`: ambientes e conexões.
 - `migrate.yaml`: entidades monitoradas e histórico das migrations.
 - `orm.yaml`: entidades de origem e destino do ORM.
 - `factory.yaml`: destino, defaults e expressões das factories.
@@ -75,14 +75,37 @@ Os arquivos contêm comentários explicando cada campo.
 `migrate reload` compara as entidades com o snapshot monitorado e cria um plano
 neutro, imutável e nomeado por timestamp. `migrate run` converte esse plano
 para o dialeto da conexão padrão e registra o checksum em `migrations_flex`.
-Para migrar outro banco, altere `DB_CONNECTION` no `.env`.
+Para migrar outro banco, altere `DB_DIALECT` no `.env`.
 
 O package Go do ORM e das factories é inferido automaticamente pelo último
 diretório configurado em `path`; não é necessário informar `package`.
 
-`factory reload` sincroniza o ORM antes de gerar as factories. Expressões
-editadas nos arquivos existentes são preservadas. Regras declaradas no
-`factory.yaml` podem usar `COLUNA` ou `TABELA.COLUNA`.
+`factory reload` sincroniza o ORM antes de gerar as factories. Regras do
+`factory.yaml` funcionam como interceptadores e podem usar `COLUNA` ou
+`TABELA.COLUNA`. A prioridade é: vínculo ORM, `exact` específico, `exact`
+global, `contains`, expressão existente e fallback pelo tipo Go.
+
+O scaffold inclui regras semânticas editáveis para nomes como `NOME`, `EMAIL`,
+`CPF`, `CNPJ`, `CEP`, `TELEFONE`, `HASH`, `DESCRICAO`, `CIDADE` e `ATIVO`.
+Os limites ficam visíveis no YAML e podem ser adaptados ao schema:
+
+```yaml
+expressions:
+  exact:
+    ATIVO: flexberry.FakeIntRange(index, 0, 1)
+  contains:
+    - pattern: EMAIL
+      expression: flexberry.FakeEmail(index, 150)
+```
+
+Os helpers limitam texto por caracteres Unicode, preservam o sufixo
+determinístico quando possível e aceitam limites opcionais:
+
+```go
+flexberry.FakeName(index, 100)
+flexberry.FakeCPF(index, 14)
+flexberry.FakeText(index, 255)
+```
 
 Relacionamentos `belongsTo` geram:
 

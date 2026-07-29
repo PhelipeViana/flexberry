@@ -46,3 +46,47 @@ func TestGenerateAppliesExactRuleAndRelationship(t *testing.T) {
 		t.Fatalf("regra exact não aplicada:\n%s", text)
 	}
 }
+
+func TestGenerateYAMLRulesInterceptPreviouslyGeneratedExpression(t *testing.T) {
+	root := t.TempDir()
+	entities := []scanner.Entity{{
+		Name: "Pessoa", Function: "Pessoa", Table: "pessoas", PrimaryKey: "id",
+		Fields: []scanner.Field{
+			{Name: "ID", Column: "id", GoType: "int64", PrimaryKey: true},
+			{Name: "Nome", Column: "nome", GoType: "string"},
+		},
+	}}
+	cfg := config.FactoryConfig{
+		Version: 1, Mapper: config.FactoryMapper{Path: "factories", Package: "factories"},
+		Expressions: config.FactoryExpressions{
+			Contains: []config.FactoryContainsRule{{Pattern: "NOME", Expression: "flexberry.FakeName(index, 150)"}},
+		},
+		Defaults: config.FactoryDefaults{Count: 1, Active: true},
+	}
+	orm := config.ORMConfig{Output: config.ORMOutput{Path: "internal/orm", Package: "orm"}}
+	if _, err := Generate(root, "example.test/app", cfg, orm, entities); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(root, "factories", "pessoa_factory.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := strings.Replace(string(content), "flexberry.FakeName(index, 150)", `flexberry.FakeString(index)`, 1)
+	if err := os.WriteFile(path, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.Expressions.Contains[0].Expression = "flexberry.FakeName(index, 80)"
+	if _, err := Generate(root, "example.test/app", cfg, orm, entities); err != nil {
+		t.Fatal(err)
+	}
+	content, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "flexberry.FakeName(index, 80)") {
+		t.Fatalf("regra do YAML não interceptou a expressão existente:\n%s", content)
+	}
+}

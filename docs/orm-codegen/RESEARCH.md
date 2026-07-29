@@ -8,7 +8,7 @@ arquivos das entidades. O código gerado ficará concentrado em
 
 ## Decisões
 
-- `internal/flexberry/flexberry.yaml` é editável.
+- `internal/flexberry/connection.yaml` é editável.
 - `internal/flexberry/custom.go` é editável e nunca será sobrescrito.
 - `internal/flexberry/orm` pertence ao gerador.
 - Conexões usam templates `${VAR}` e `${VAR:-fallback}`.
@@ -29,4 +29,3 @@ arquivos das entidades. O código gerado ficará concentrado em
 - Gerar em diretório temporário e validar antes da substituição.
 - Controlar somente arquivos `.gen.go` e um manifesto.
 - Permitir overrides no YAML para qualquer inferência ambígua.
-

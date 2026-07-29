@@ -70,7 +70,7 @@ func friendlyIssues(err error) []Issue {
 		strings.Contains(lower, "cannot unmarshal"),
 		strings.Contains(lower, "ler configuração"):
 		return []Issue{{
-			Message:  "O arquivo flexberry.yaml possui uma configuração inválida.",
+			Message:  "O arquivo connection.yaml possui uma configuração inválida.",
 			Solution: "Revise os campos e a indentação do YAML e execute novamente.",
 		}}
 	case strings.Contains(lower, "missing environment variable"):

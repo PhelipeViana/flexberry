@@ -184,7 +184,7 @@ func configureProject(title string, args []string) error {
 	fmt.Println("  " + cliui.Success("✓ Dependência instalada"))
 	fmt.Println("\n" + cliui.Success("✓ Operação concluída com sucesso."))
 	fmt.Println("\nPróximos passos:")
-	fmt.Println("  1. Revise internal/flexberry/flexberry.yaml")
+	fmt.Println("  1. Revise internal/flexberry/connection.yaml")
 	fmt.Println("  2. Execute .\\flexberry.exe validate --resolve")
 	return nil
 }
@@ -485,7 +485,7 @@ func executeFactories() error {
 
 func runGenerate(args []string) error {
 	flags := flag.NewFlagSet("run", flag.ContinueOnError)
-	configPath := flags.String("config", "", "caminho alternativo para flexberry.yaml")
+	configPath := flags.String("config", "", "caminho alternativo para connection.yaml")
 	dryRun := flags.Bool("dry-run", false, "analisa sem escrever arquivos")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -560,14 +560,14 @@ func runInit(args []string) error {
 	for _, path := range result.Skipped {
 		fmt.Printf("  = %s (preservado)\n", filepath.ToSlash(path))
 	}
-	fmt.Println("\nPróximo passo: revise internal/flexberry/flexberry.yaml")
+	fmt.Println("\nPróximo passo: revise internal/flexberry/connection.yaml")
 	fmt.Println("Depois execute: flexberry validate")
 	return nil
 }
 
 func runValidate(args []string) error {
 	flags := flag.NewFlagSet("validate", flag.ContinueOnError)
-	configPath := flags.String("config", "", "caminho alternativo para flexberry.yaml")
+	configPath := flags.String("config", "", "caminho alternativo para connection.yaml")
 	resolve := flags.Bool("resolve", false, "carrega o .env e valida a conexão padrão")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -635,7 +635,7 @@ func printHelpLegacy() {
 
 Uso:
   flexberry init [--force]       cria a estrutura inicial no projeto
-  flexberry validate            valida internal/flexberry/flexberry.yaml
+  flexberry validate            valida internal/flexberry/connection.yaml
   flexberry validate --resolve  valida também o arquivo de ambiente
   flexberry version             exibe a versão instalada
 

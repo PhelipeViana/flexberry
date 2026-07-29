@@ -9,15 +9,15 @@ const validConfig = `
 version: 1
 environment:
   file: ./.env
-  ambient: APPLICATION_ENV
+  ambient: APP_ENV
   fallback: development
 default:
-  variable: DATABASE_CONNECTION
+  dialect: DB_DIALECT
   fallback: postgres
 connections:
   postgres:
     dialect: postgres
-    url: postgres://${POSTGRES_USERNAME}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DATABASE}?sslmode=${POSTGRES_SSLMODE:-disable}
+    url: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=${POSTGRES_SSLMODE:-disable}
     schema: ${POSTGRES_SCHEMA:-public}
 entities:
   paths:
@@ -30,11 +30,11 @@ func TestDecodeAndResolveConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	values := map[string]string{
-		"POSTGRES_USERNAME": "app",
+		"POSTGRES_USER":     "app",
 		"POSTGRES_PASSWORD": "secret",
 		"POSTGRES_HOST":     "localhost",
 		"POSTGRES_PORT":     "5433",
-		"POSTGRES_DATABASE": "example",
+		"POSTGRES_DB":       "example",
 	}
 	connection, err := cfg.ResolvedConnection("postgres", func(key string) string {
 		return values[key]
@@ -65,12 +65,12 @@ func TestDecodeRejectsUnknownField(t *testing.T) {
 }
 
 func TestDecodeAcceptsLegacyEnvironmentVariable(t *testing.T) {
-	legacy := strings.Replace(validConfig, "ambient: APPLICATION_ENV", "variable: APPLICATION_ENV", 1)
+	legacy := strings.Replace(validConfig, "ambient: APP_ENV", "variable: APP_ENV", 1)
 	cfg, err := Decode(strings.NewReader(legacy))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Environment.Ambient != "APPLICATION_ENV" {
+	if cfg.Environment.Ambient != "APP_ENV" {
 		t.Fatalf("ambient legado não foi normalizado: %#v", cfg.Environment)
 	}
 }
@@ -81,7 +81,7 @@ func TestDefaultConnectionUsesEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := cfg.DefaultConnection(func(key string) string {
-		if key == "DATABASE_CONNECTION" {
+		if key == "DB_DIALECT" {
 			return "postgres"
 		}
 		return ""

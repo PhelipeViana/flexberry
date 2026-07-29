@@ -83,13 +83,15 @@ func render(modulePath string, cfg config.FactoryConfig, orm config.ORMConfig, e
 		if field.PrimaryKey {
 			continue
 		}
-		expression := existing[normalize(field.Column)]
-		if link, ok := links[normalize(field.Column)]; ok && (expression == "" || strings.HasPrefix(expression, "flexberry.Fake") || strings.HasPrefix(expression, "flexberry.Vinculo")) {
+		expression := ""
+		if link, ok := links[normalize(field.Column)]; ok {
 			expression = fmt.Sprintf("flexberry.Vinculo(%q, %q)", link.table, link.column)
-		}
-		configured := configuredExpression(cfg, entity.Table, field.Column)
-		if configured != "" && (expression == "" || strings.HasPrefix(expression, "flexberry.Fake")) {
+		} else if configured := configuredExpression(cfg, entity.Table, field.Column); configured != "" {
+			// factory.yaml intercepta qualquer expressão gerada anteriormente.
+			// Dessa forma, alterar exact/contains e executar Reload atualiza a factory.
 			expression = configured
+		} else {
+			expression = existing[normalize(field.Column)]
 		}
 		if expression == "" {
 			expression = defaultExpression(field)
@@ -160,6 +162,12 @@ func defaultExpression(field scanner.Field) string {
 		return "flexberry.FakeString(index)"
 	case "bool":
 		return "flexberry.FakeBool(index)"
+	case "float32", "float64":
+		return "flexberry.FakeDecimal(index, 10, 2)"
+	case "time.Time":
+		return "flexberry.FakeDateTime(index)"
+	case "[]byte":
+		return "flexberry.FakeBytes(index, 128)"
 	default:
 		return "flexberry.FakeInt(index)"
 	}

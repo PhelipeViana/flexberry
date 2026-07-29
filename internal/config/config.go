@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const DefaultRelativePath = "internal/flexberry/flexberry.yaml"
+const DefaultRelativePath = "internal/flexberry/connection.yaml"
 const (
 	DefaultGenerateOutput  = "internal/flexberry/orm"
 	DefaultGeneratePackage = "flexberry"
@@ -49,7 +49,7 @@ type EnvironmentConfig struct {
 }
 
 type DefaultConfig struct {
-	Variable string `yaml:"variable"`
+	Dialect  string `yaml:"dialect"`
 	Fallback string `yaml:"fallback"`
 }
 
@@ -133,8 +133,8 @@ func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Environment.Ambient) == "" {
 		problems = append(problems, "environment.ambient é obrigatório")
 	}
-	if strings.TrimSpace(c.Default.Variable) == "" {
-		problems = append(problems, "default.variable é obrigatório")
+	if strings.TrimSpace(c.Default.Dialect) == "" {
+		problems = append(problems, "default.dialect é obrigatório")
 	}
 	if strings.TrimSpace(c.Default.Fallback) == "" {
 		problems = append(problems, "default.fallback é obrigatório")
@@ -187,7 +187,7 @@ func (c *Config) EnvironmentName(lookup func(string) string) string {
 }
 
 func (c *Config) DefaultConnection(lookup func(string) string) (string, error) {
-	name := strings.ToLower(valueOrFallback(lookup(c.Default.Variable), c.Default.Fallback))
+	name := strings.ToLower(valueOrFallback(lookup(c.Default.Dialect), c.Default.Fallback))
 	if _, ok := c.Connections[name]; !ok {
 		return "", fmt.Errorf(
 			"conexão padrão %q não configurada; disponíveis: %s",

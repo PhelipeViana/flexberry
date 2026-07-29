@@ -13,7 +13,7 @@
 
 - Scanner AST de entidades com tags `db`.
 - Inferência de tabela, chave primária, nulabilidade e relacionamentos simples.
-- Overrides por entidade no `flexberry.yaml`.
+- Overrides por entidade no `connection.yaml`.
 - `flexberry run` e `flexberry run --dry-run`.
 - Geração determinística de `entities.gen.go` e `manifest.gen.json`.
 - Teste no projeto `back`: 20 entidades mapeadas e `go test ./...` aprovado.

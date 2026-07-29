@@ -24,8 +24,8 @@ func Run(projectRoot string, force bool) (Result, error) {
 		{config.DefaultRelativePath, ConnectionConfigTemplateV2, false},
 		{config.ORMRelativePath, ORMConfigTemplateV2, false},
 		{"internal/flexberry/factory.yaml", FactoryConfigTemplateV3, false},
-		{"seguranca/database.env", EnvTemplate, true},
-		{"seguranca/database.example.env", EnvTemplate, false},
+		{".env", EnvTemplate, true},
+		{".env.example", EnvTemplate, false},
 	}
 
 	var result Result
@@ -81,7 +81,7 @@ func writeFile(path, content string, overwrite bool) error {
 
 func ensureGitIgnore(projectRoot string) error {
 	path := filepath.Join(projectRoot, ".gitignore")
-	const line = "seguranca/database.env"
+	const line = ".env"
 
 	content, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {

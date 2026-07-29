@@ -40,5 +40,5 @@ MSSQL_SCHEMA=dbo
 `
 
 const GitIgnoreTemplate = `# Credenciais locais do Flexberry
-seguranca/database.env
+.env
 `

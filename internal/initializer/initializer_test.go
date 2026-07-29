@@ -80,3 +80,36 @@ func TestRunRepairsBlankConfiguration(t *testing.T) {
 		t.Fatal("orm.yaml vazio não foi recriado")
 	}
 }
+
+func TestRunPreservesExistingRootEnv(t *testing.T) {
+	root := t.TempDir()
+	const custom = "DATABASE_CONNECTION=legacy\n"
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte(custom), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Run(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(root, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != custom {
+		t.Fatal(".env existente foi sobrescrito")
+	}
+	if _, err := os.Stat(filepath.Join(root, ".env.example")); err != nil {
+		t.Fatal(".env.example não foi criado")
+	}
+	if len(result.Skipped) == 0 {
+		t.Fatal(".env existente deveria constar como preservado")
+	}
+	gitignore, err := os.ReadFile(filepath.Join(root, ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsLine(string(gitignore), ".env") {
+		t.Fatal(".env não foi incluído no .gitignore")
+	}
+}

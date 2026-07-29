@@ -5,7 +5,7 @@ version: 1
 
 # Arquivo local que contém as variáveis usadas nas conexões.
 environment:
-  file: ./seguranca/database.env
+  file: ./.env
   variable: APPLICATION_ENV
   fallback: development
 

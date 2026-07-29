@@ -23,8 +23,7 @@ import (
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "\n"+cliui.Failure("✗ Não foi possível concluir a operação."))
-		fmt.Fprintf(os.Stderr, "  Motivo: %v\n", err)
+		cliui.PresentError(err)
 		os.Exit(1)
 	}
 }
@@ -43,18 +42,33 @@ func run(args []string) error {
 
 	switch args[0] {
 	case "connection", "conexao", "conexão":
+		if err := ensureFlexberryConfigured(); err != nil {
+			return err
+		}
 		return runConnection(args[1:])
 	case "config":
 		return runConfig(args[1:])
 	case "orm":
+		if err := ensureFlexberryConfigured(); err != nil {
+			return err
+		}
 		return runORM(args[1:])
 	case "factory":
+		if err := ensureFlexberryConfigured(); err != nil {
+			return err
+		}
 		return runFactory(args[1:])
 	case "init":
 		return runInit(args[1:])
 	case "validate":
+		if err := ensureFlexberryConfigured(); err != nil {
+			return err
+		}
 		return runValidate(args[1:])
 	case "run":
+		if err := ensureFlexberryConfigured(); err != nil {
+			return err
+		}
 		return runGenerate(args[1:])
 	case "version", "--version", "-v":
 		fmt.Println("flexberry", flexberry.Version)
@@ -65,6 +79,40 @@ func run(args []string) error {
 	default:
 		return fmt.Errorf("comando %q desconhecido; use flexberry help", args[0])
 	}
+}
+
+func ensureFlexberryConfigured() error {
+	root, err := project.FindRoot(".")
+	if err != nil {
+		return cliui.NewUserError(
+			"Este diretório não parece ser um projeto Go.",
+			"Execute o Flexberry em uma pasta que contenha um arquivo go.mod.",
+		)
+	}
+	path := filepath.Join(root, filepath.FromSlash(config.DefaultRelativePath))
+	content, readErr := os.ReadFile(path)
+	if readErr == nil && strings.TrimSpace(string(content)) != "" {
+		return nil
+	}
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return fmt.Errorf("verificar configuração Flexberry: %w", readErr)
+	}
+
+	if _, initErr := initializer.Run(root, false); initErr != nil {
+		return fmt.Errorf("criar configuração inicial: %w", initErr)
+	}
+	if dependencyErr := installProjectDependency(root); dependencyErr != nil {
+		return cliui.UserError{Issues: []cliui.Issue{
+			{
+				Message:  "A estrutura inicial foi criada, mas a dependência não pôde ser instalada.",
+				Solution: dependencyErr.Error(),
+			},
+		}}
+	}
+	return cliui.NewUserError(
+		"A configuração do Flexberry não existia e foi criada automaticamente.",
+		"Preencha internal/flexberry/flexberry.yaml e .env; depois execute o comando novamente.",
+	)
 }
 
 func runConfig(args []string) error {

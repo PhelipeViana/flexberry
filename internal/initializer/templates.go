@@ -94,3 +94,43 @@ package flexberry
 const GitIgnoreTemplate = `# Credenciais locais do Flexberry
 seguranca/database.env
 `
+
+const SimplifiedConfigTemplate = `version: 1
+
+environment:
+  file: ./seguranca/database.env
+  variable: APPLICATION_ENV
+  fallback: development
+
+default:
+  variable: DATABASE_CONNECTION
+  fallback: postgres
+
+connections:
+  postgres:
+    dialect: postgres
+    url: postgres://${POSTGRES_USERNAME}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DATABASE}?sslmode=${POSTGRES_SSLMODE:-disable}
+    schema: ${POSTGRES_SCHEMA:-public}
+  oracle:
+    dialect: oracle
+    url: oracle://${ORACLE_USERNAME}:${ORACLE_PASSWORD}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}
+    schema: ${ORACLE_SCHEMA}
+  mysql:
+    dialect: mysql
+    url: ${MYSQL_USERNAME}:${MYSQL_PASSWORD}@tcp(${MYSQL_HOST}:${MYSQL_PORT})/${MYSQL_DATABASE}?parseTime=true&charset=utf8mb4
+
+entities:
+  paths:
+    - internal/modules/**/domain/*.go
+  exclude:
+    - "**/*_test.go"
+    - "**/*.gen.go"
+`
+
+const FactoryConfigTemplate = `version: 1
+
+expressions:
+  # Use COLUNA para regra global ou TABELA.COLUNA para regra específica.
+  exact: {}
+  contains: []
+`

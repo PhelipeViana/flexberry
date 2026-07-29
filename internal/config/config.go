@@ -14,6 +14,12 @@ import (
 )
 
 const DefaultRelativePath = "internal/flexberry/flexberry.yaml"
+const (
+	DefaultGenerateOutput  = "internal/flexberry/orm"
+	DefaultGeneratePackage = "flexberry"
+	DefaultPerPage         = 15
+	MaxPerPage             = 100
+)
 
 var (
 	variablePattern   = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-(.*?))?\}`)
@@ -31,8 +37,8 @@ type Config struct {
 	Default     DefaultConfig         `yaml:"default"`
 	Connections map[string]Connection `yaml:"connections"`
 	Entities    EntitiesConfig        `yaml:"entities"`
-	Generate    GenerateConfig        `yaml:"generate"`
-	Pagination  PaginationConfig      `yaml:"pagination"`
+	Generate    GenerateConfig        `yaml:"generate,omitempty"`
+	Pagination  PaginationConfig      `yaml:"pagination,omitempty"`
 }
 
 type EnvironmentConfig struct {
@@ -95,6 +101,18 @@ func Decode(reader io.Reader) (*Config, error) {
 	var cfg Config
 	if err := decoder.Decode(&cfg); err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(cfg.Generate.Output) == "" {
+		cfg.Generate.Output = DefaultGenerateOutput
+	}
+	if strings.TrimSpace(cfg.Generate.Package) == "" {
+		cfg.Generate.Package = DefaultGeneratePackage
+	}
+	if cfg.Pagination.DefaultPerPage == 0 {
+		cfg.Pagination.DefaultPerPage = DefaultPerPage
+	}
+	if cfg.Pagination.MaxPerPage == 0 {
+		cfg.Pagination.MaxPerPage = MaxPerPage
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err

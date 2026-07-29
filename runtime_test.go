@@ -41,6 +41,16 @@ func TestOraclePaginationAndPlaceholder(t *testing.T) {
 	}
 }
 
+func TestSQLServerPaginationAndPlaceholder(t *testing.T) {
+	query := runtimeDefinition().Where("ID", int64(7)).Limit(1)
+	statement, _ := query.selectSQL("sqlserver")
+	if !strings.Contains(statement, "ID = @p1") ||
+		!strings.Contains(statement, "ORDER BY (SELECT NULL)") ||
+		!strings.HasSuffix(statement, "OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY") {
+		t.Fatalf("SQL Server inesperado: %s", statement)
+	}
+}
+
 func TestInvalidIdentifierIsRejected(t *testing.T) {
 	query := runtimeDefinition().Where("ID; DROP TABLE people", 1)
 	if query.err == nil {

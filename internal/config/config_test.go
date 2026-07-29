@@ -22,12 +22,6 @@ connections:
 entities:
   paths:
     - internal/modules/**/domain/*.go
-generate:
-  output: internal/flexberry/orm
-  package: flexberry
-pagination:
-  default_per_page: 15
-  max_per_page: 100
 `
 
 func TestDecodeAndResolveConnection(t *testing.T) {
@@ -54,6 +48,12 @@ func TestDecodeAndResolveConnection(t *testing.T) {
 	}
 	if connection.Schema != "public" {
 		t.Fatalf("Schema = %q, esperado public", connection.Schema)
+	}
+	if cfg.Generate.Output != DefaultGenerateOutput || cfg.Generate.Package != DefaultGeneratePackage {
+		t.Fatalf("convenções de geração não aplicadas: %#v", cfg.Generate)
+	}
+	if cfg.Pagination.DefaultPerPage != DefaultPerPage || cfg.Pagination.MaxPerPage != MaxPerPage {
+		t.Fatalf("convenções de paginação não aplicadas: %#v", cfg.Pagination)
 	}
 }
 

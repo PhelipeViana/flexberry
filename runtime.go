@@ -34,7 +34,7 @@ func Register(name string, executor Executor, dialect string) error {
 		return fmt.Errorf("nome e executor da conexão são obrigatórios")
 	}
 	switch dialect {
-	case "postgres", "oracle", "mysql":
+	case "postgres", "oracle", "mysql", "sqlserver":
 	default:
 		return fmt.Errorf("dialeto %q não suportado", dialect)
 	}
@@ -316,6 +316,8 @@ func (query *Query[T]) selectSQL(dialect string) (string, []any) {
 			}
 		}
 		statement += " ORDER BY " + strings.Join(values, ", ")
+	} else if dialect == "sqlserver" && (query.limit > 0 || query.offset > 0) {
+		statement += " ORDER BY (SELECT NULL)"
 	}
 	return statement + paginationSQL(dialect, query.limit, query.offset), args
 }
@@ -339,6 +341,8 @@ func placeholder(dialect string, index int) string {
 		return fmt.Sprintf("$%d", index)
 	case "oracle":
 		return fmt.Sprintf(":%d", index)
+	case "sqlserver":
+		return fmt.Sprintf("@p%d", index)
 	default:
 		return "?"
 	}
@@ -352,7 +356,7 @@ func paginationSQL(dialect string, limit, offset int) string {
 		limit = 1<<31 - 1
 	}
 	switch dialect {
-	case "oracle":
+	case "oracle", "sqlserver":
 		return fmt.Sprintf(" OFFSET %d ROWS FETCH NEXT %d ROWS ONLY", offset, limit)
 	default:
 		return fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)

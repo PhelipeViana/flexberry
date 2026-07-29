@@ -120,23 +120,40 @@ func configureProject(title string, args []string) error {
 func installProjectDependency(root string) error {
 	version := strings.TrimPrefix(flexberry.Version, "v")
 	moduleVersion := "github.com/PhelipeViana/flexberry@v" + version
-	command := exec.Command("go", "get", moduleVersion)
-	command.Dir = root
-	output, err := command.CombinedOutput()
+	output, err := runGoGet(root, moduleVersion, nil)
 	if err == nil {
 		return nil
 	}
+
 	detail := strings.TrimSpace(string(output))
 	if strings.Contains(detail, "unknown revision") || strings.Contains(detail, "404 Not Found") {
-		return fmt.Errorf(
-			"a versão v%s ainda não foi encontrada pelo proxy do Go; aguarde alguns minutos e execute novamente",
-			version,
-		)
+		directEnv := []string{
+			"GOPROXY=direct",
+			"GONOSUMDB=github.com/PhelipeViana/flexberry",
+		}
+		directOutput, directErr := runGoGet(root, moduleVersion, directEnv)
+		if directErr == nil {
+			return nil
+		}
+		directDetail := strings.TrimSpace(string(directOutput))
+		if directDetail != "" {
+			return fmt.Errorf("a versão v%s ainda não está disponível: %s", version, directDetail)
+		}
+		return fmt.Errorf("a versão v%s ainda não está disponível; tente novamente em alguns minutos", version)
 	}
 	if detail == "" {
 		detail = err.Error()
 	}
 	return fmt.Errorf("não foi possível instalar a dependência: %s", detail)
+}
+
+func runGoGet(root, moduleVersion string, extraEnv []string) ([]byte, error) {
+	command := exec.Command("go", "get", moduleVersion)
+	command.Dir = root
+	if len(extraEnv) > 0 {
+		command.Env = append(os.Environ(), extraEnv...)
+	}
+	return command.CombinedOutput()
 }
 
 func runConfigRemove(args []string) error {

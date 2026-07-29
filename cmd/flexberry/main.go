@@ -21,7 +21,8 @@ import (
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintf(os.Stderr, "flexberry: %v\n", err)
+		fmt.Fprintln(os.Stderr, "\n✗ Não foi possível concluir a operação.")
+		fmt.Fprintf(os.Stderr, "  Motivo: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -68,21 +69,9 @@ func runConfig(args []string) error {
 	}
 	switch args[0] {
 	case "install", "instalar":
-		if err := runInit(args[1:]); err != nil {
-			return err
-		}
-		return installProjectDependency()
+		return configureProject("Instalação", args[1:])
 	case "update", "atualizar":
-		root, err := project.FindRoot(".")
-		if err != nil {
-			return err
-		}
-		result, err := initializer.Run(root, false)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Configuração atualizada: %d criado(s), %d preservado(s)\n", len(result.Created), len(result.Skipped))
-		return installProjectDependency()
+		return configureProject("Atualização", args[1:])
 	case "remove", "remover":
 		return runConfigRemove(args[1:])
 	default:
@@ -90,20 +79,64 @@ func runConfig(args []string) error {
 	}
 }
 
-func installProjectDependency() error {
+func configureProject(title string, args []string) error {
+	flags := flag.NewFlagSet("config", flag.ContinueOnError)
+	force := flags.Bool("force", false, "recria configurações editáveis")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
 	root, err := project.FindRoot(".")
 	if err != nil {
 		return err
 	}
-	version := strings.TrimPrefix(flexberry.Version, "v")
-	command := exec.Command("go", "get", "github.com/PhelipeViana/flexberry@v"+version)
-	command.Dir = root
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
-	if err := command.Run(); err != nil {
-		return fmt.Errorf("instalar dependência Flexberry: %w", err)
+
+	fmt.Printf("\nFlexberry · %s\n\n", title)
+	fmt.Println("→ Preparando configurações...")
+	result, err := initializer.Run(root, *force)
+	if err != nil {
+		return fmt.Errorf("preparar configurações: %w", err)
 	}
+	for _, path := range result.Created {
+		fmt.Printf("  + %s\n", filepath.ToSlash(path))
+	}
+	if len(result.Created) == 0 {
+		fmt.Printf("  ✓ Arquivos existentes preservados (%d)\n", len(result.Skipped))
+	} else if len(result.Skipped) > 0 {
+		fmt.Printf("  = %d arquivo(s) existente(s) preservado(s)\n", len(result.Skipped))
+	}
+
+	fmt.Printf("\n→ Instalando Flexberry %s...\n", flexberry.Version)
+	if err := installProjectDependency(root); err != nil {
+		return err
+	}
+	fmt.Println("  ✓ Dependência instalada")
+	fmt.Println("\n✓ Operação concluída com sucesso.")
+	fmt.Println("\nPróximos passos:")
+	fmt.Println("  1. Revise internal/flexberry/flexberry.yaml")
+	fmt.Println("  2. Execute .\\flexberry.exe validate --resolve")
 	return nil
+}
+
+func installProjectDependency(root string) error {
+	version := strings.TrimPrefix(flexberry.Version, "v")
+	moduleVersion := "github.com/PhelipeViana/flexberry@v" + version
+	command := exec.Command("go", "get", moduleVersion)
+	command.Dir = root
+	output, err := command.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	detail := strings.TrimSpace(string(output))
+	if strings.Contains(detail, "unknown revision") || strings.Contains(detail, "404 Not Found") {
+		return fmt.Errorf(
+			"a versão v%s ainda não foi encontrada pelo proxy do Go; aguarde alguns minutos e execute novamente",
+			version,
+		)
+	}
+	if detail == "" {
+		detail = err.Error()
+	}
+	return fmt.Errorf("não foi possível instalar a dependência: %s", detail)
 }
 
 func runConfigRemove(args []string) error {

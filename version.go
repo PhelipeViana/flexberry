@@ -2,4 +2,4 @@
 // Flexberry CLI.
 package flexberry
 
-const Version = "0.1.0-alpha.10"
+const Version = "0.1.0-alpha.11"

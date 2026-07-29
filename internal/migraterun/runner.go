@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -54,6 +55,7 @@ func Run(root string, base *config.Config, cfg config.MigrateConfig) error {
 		return err
 	}
 	fmt.Printf("%s %s (%s) %s\n", cliui.Info("→"), name, connection.Dialect, cliui.Info("[DEFAULT]"))
+	fmt.Printf("  %s %s\n", cliui.Muted("Histórico:"), historyLocation(connection, cfg.History))
 	applied, skipped, runErr := runConnection(connection, cfg.History, files)
 	if runErr != nil {
 		fmt.Printf("  %s %s\n", cliui.Failure("✗ ERRO:"), runErr)
@@ -183,7 +185,15 @@ func executeOperation(ctx context.Context, db *sql.DB, dialect, schema string, o
 		if operation.Column == nil {
 			return fmt.Errorf("operação alter_column inválida")
 		}
-		for _, query := range alterColumnSQL(dialect, schema, operation.Table, *operation.Column) {
+		var currentNullable *bool
+		if dialect == "oracle" {
+			nullable, err := oracleColumnNullable(ctx, db, schema, operation.Table, operation.Column.Name)
+			if err != nil {
+				return err
+			}
+			currentNullable = &nullable
+		}
+		for _, query := range alterColumnSQL(dialect, schema, operation.Table, *operation.Column, currentNullable) {
 			if _, err := db.ExecContext(ctx, query); err != nil {
 				return fmt.Errorf("alterar %s.%s: %w", operation.Table, operation.Column.Name, err)
 			}
@@ -224,6 +234,11 @@ func executeOperation(ctx context.Context, db *sql.DB, dialect, schema string, o
 }
 
 func ensureHistory(ctx context.Context, db *sql.DB, dialect, schema, table string) error {
+	if dialect == "oracle" {
+		if err := repairLegacyOracleHistory(ctx, db, schema, table); err != nil {
+			return err
+		}
+	}
 	target := qualified(dialect, schema, table)
 	var query string
 	switch dialect {
@@ -300,7 +315,7 @@ func createTableSQL(dialect, schema, table string, columns []migrategen.Column) 
 	return fmt.Sprintf("CREATE TABLE %s (%s)", qualified(dialect, schema, table), strings.Join(definitions, ", ")), nil
 }
 
-func alterColumnSQL(dialect, schema, table string, column migrategen.Column) []string {
+func alterColumnSQL(dialect, schema, table string, column migrategen.Column, currentNullable *bool) []string {
 	target, name := qualified(dialect, schema, table), quote(dialect, column.Name)
 	definition := columnDefinition(dialect, column, false)
 	switch dialect {
@@ -316,7 +331,17 @@ func alterColumnSQL(dialect, schema, table string, column migrategen.Column) []s
 			nullability,
 		}
 	case "oracle":
-		return []string{fmt.Sprintf("ALTER TABLE %s MODIFY (%s)", target, definition)}
+		dataType := strings.TrimSpace(strings.TrimPrefix(definition, name))
+		dataType = strings.TrimSuffix(strings.TrimSuffix(dataType, " NOT NULL"), " NULL")
+		queries := []string{fmt.Sprintf("ALTER TABLE %s MODIFY (%s %s)", target, name, dataType)}
+		if currentNullable != nil && *currentNullable != column.Nullable {
+			nullability := "NOT NULL"
+			if column.Nullable {
+				nullability = "NULL"
+			}
+			queries = append(queries, fmt.Sprintf("ALTER TABLE %s MODIFY (%s %s)", target, name, nullability))
+		}
+		return queries
 	case "mysql":
 		return []string{fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s", target, definition)}
 	default:
@@ -396,6 +421,18 @@ func columnExists(ctx context.Context, db *sql.DB, dialect, schema, table, colum
 	}
 }
 
+func oracleColumnNullable(ctx context.Context, db *sql.DB, schema, table, column string) (bool, error) {
+	var nullable string
+	err := db.QueryRowContext(ctx,
+		"SELECT nullable FROM all_tab_columns WHERE owner=:1 AND table_name=:2 AND column_name=:3",
+		strings.ToUpper(schema), strings.ToUpper(table), strings.ToUpper(column),
+	).Scan(&nullable)
+	if err != nil {
+		return false, err
+	}
+	return strings.EqualFold(nullable, "Y"), nil
+}
+
 func qualified(dialect, schema, table string) string {
 	if strings.TrimSpace(schema) == "" || dialect == "mysql" {
 		return quote(dialect, table)
@@ -409,9 +446,75 @@ func quote(dialect, value string) string {
 		return "`" + strings.ReplaceAll(value, "`", "``") + "`"
 	case "sqlserver":
 		return "[" + strings.ReplaceAll(value, "]", "]]") + "]"
+	case "oracle":
+		return `"` + strings.ReplaceAll(strings.ToUpper(value), `"`, `""`) + `"`
 	default:
 		return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
 	}
+}
+
+func repairLegacyOracleHistory(ctx context.Context, db *sql.DB, schema, table string) error {
+	owner := strings.ToUpper(schema)
+	var current, legacy int
+	if err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM all_tables WHERE owner=:1 AND table_name=:2",
+		owner, strings.ToUpper(table),
+	).Scan(&current); err != nil {
+		return err
+	}
+	if current > 0 {
+		return nil
+	}
+	if err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM all_tables WHERE owner=:1 AND table_name=:2",
+		owner, table,
+	).Scan(&legacy); err != nil {
+		return err
+	}
+	if legacy == 0 {
+		return nil
+	}
+	legacyTarget := `"` + strings.ReplaceAll(owner, `"`, `""`) + `"."` + strings.ReplaceAll(table, `"`, `""`) + `"`
+	_, err := db.ExecContext(ctx, fmt.Sprintf(
+		"ALTER TABLE %s RENAME TO %s",
+		legacyTarget,
+		quote("oracle", table),
+	))
+	return err
+}
+
+func historyLocation(connection config.Connection, table string) string {
+	dialect := strings.ToLower(connection.Dialect)
+	schema := connection.Schema
+	host, database := "", ""
+	if dialect == "mysql" {
+		value := connection.URL
+		if start := strings.Index(value, "@tcp("); start >= 0 {
+			remainder := value[start+5:]
+			if end := strings.Index(remainder, ")"); end >= 0 {
+				host = remainder[:end]
+				after := strings.TrimPrefix(remainder[end+1:], "/")
+				database = strings.SplitN(after, "?", 2)[0]
+			}
+		}
+	} else if parsed, err := url.Parse(connection.URL); err == nil {
+		host = parsed.Host
+		database = strings.TrimPrefix(parsed.Path, "/")
+		if dialect == "sqlserver" {
+			database = parsed.Query().Get("database")
+		}
+	}
+	location := host
+	if database != "" {
+		location += "/" + database
+	}
+	if schema != "" {
+		location += "." + schema
+	}
+	if location != "" {
+		location += "."
+	}
+	return location + table
 }
 
 func objectName(schema, table string) string {

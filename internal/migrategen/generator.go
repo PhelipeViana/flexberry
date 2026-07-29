@@ -188,14 +188,26 @@ func diff(previous, current Snapshot) ([]Operation, error) {
 	oldTables := tableMap(previous.Tables)
 	newTables := tableMap(current.Tables)
 	var operations []Operation
-	for name, oldTable := range oldTables {
+	var oldTableNames []string
+	for name := range oldTables {
+		oldTableNames = append(oldTableNames, name)
+	}
+	sort.Strings(oldTableNames)
+	for _, name := range oldTableNames {
+		oldTable := oldTables[name]
 		newTable, exists := newTables[name]
 		if !exists {
 			operations = append(operations, Operation{Kind: "drop_table", Table: name})
 			continue
 		}
 		oldColumns, newColumns := columnMap(oldTable.Columns), columnMap(newTable.Columns)
-		for column, oldValue := range oldColumns {
+		var oldColumnNames []string
+		for column := range oldColumns {
+			oldColumnNames = append(oldColumnNames, column)
+		}
+		sort.Strings(oldColumnNames)
+		for _, column := range oldColumnNames {
+			oldValue := oldColumns[column]
 			newValue, exists := newColumns[column]
 			if !exists {
 				if foreignKeyColumn(oldTable, column) {

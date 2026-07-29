@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PhelipeViana/flexberry/internal/config"
 	"github.com/PhelipeViana/flexberry/internal/migrategen"
 )
 
@@ -43,11 +44,32 @@ func TestQualifiedIdentifiers(t *testing.T) {
 
 func TestAlterAndDropSQL(t *testing.T) {
 	column := migrategen.Column{Name: "descricao", Type: "string", Nullable: true}
-	postgres := alterColumnSQL("postgres", "public", "produtos", column)
+	postgres := alterColumnSQL("postgres", "public", "produtos", column, nil)
 	if len(postgres) != 2 || !strings.Contains(postgres[0], "TYPE VARCHAR(255)") {
 		t.Fatalf("alter postgres inesperado: %#v", postgres)
 	}
 	if got := dropTableSQL("oracle", "APP", "temporarios"); !strings.Contains(got, "CASCADE CONSTRAINTS PURGE") {
 		t.Fatalf("drop oracle inesperado: %s", got)
+	}
+}
+
+func TestOracleIdentifiersAreUppercase(t *testing.T) {
+	if got := qualified("oracle", "flexberry", "migrations_flex"); got != `"FLEXBERRY"."MIGRATIONS_FLEX"` {
+		t.Fatalf("identificador Oracle inesperado: %s", got)
+	}
+}
+
+func TestHistoryLocationDoesNotExposeCredentials(t *testing.T) {
+	connection := config.Connection{
+		Dialect: "postgres",
+		URL:     "postgres://user:secret@localhost:5499/flexberry?sslmode=disable",
+		Schema:  "public",
+	}
+	got := historyLocation(connection, "migrations_flex")
+	if got != "localhost:5499/flexberry.public.migrations_flex" {
+		t.Fatalf("local inesperado: %s", got)
+	}
+	if strings.Contains(got, "secret") {
+		t.Fatal("credencial exposta")
 	}
 }

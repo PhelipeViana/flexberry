@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PhelipeViana/flexberry/internal/cliui"
 	"golang.org/x/term"
 )
 
@@ -88,12 +89,12 @@ func Select() (string, error) {
 	}
 	defer term.Restore(int(os.Stdin.Fd()), state)
 
-	fmt.Print("\r\n\033[34mFlexberry\033[0m\r\n")
+	fmt.Printf("\r\n%sFlexberry%s\r\n", cliui.ColorBlue, cliui.ColorReset)
 	if manifest.Message != "" {
-		fmt.Printf("\033[36m%s\033[0m\r\n", manifest.Message)
+		fmt.Printf("%s%s%s\r\n", cliui.ColorCyan, manifest.Message, cliui.ColorReset)
 	}
 	if !online {
-		fmt.Print("\033[33m⚠ Menu online indisponível; usando opções locais.\033[0m\r\n")
+		fmt.Printf("%s⚠ Menu online indisponível; usando opções locais.%s\r\n", cliui.ColorYellow, cliui.ColorReset)
 	}
 	fmt.Print("Use ↑/↓ e Enter:\r\n\r\n")
 	selected := 0
@@ -164,11 +165,11 @@ func enabledItems(items []MenuEntry) []MenuEntry {
 
 func render(items []MenuEntry, selected int) {
 	for index, item := range items {
-		arrow, color := "  ", "\033[0m"
+		arrow, color := "  ", cliui.ColorReset
 		if index == selected {
-			arrow, color = "➜ ", "\033[32m"
+			arrow, color = "➜ ", cliui.ColorGreen
 		}
-		fmt.Printf("\033[2K\r%s%s%s\033[0m\r\n", color, arrow, item.Label)
+		fmt.Printf("\033[2K\r%s%s%s%s\r\n", color, arrow, item.Label, cliui.ColorReset)
 	}
 }
 

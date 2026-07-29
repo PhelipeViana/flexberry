@@ -33,6 +33,10 @@ comandos conhecidos; ele não executa scripts arbitrários.
 .\flexberry.exe version
 ```
 
+`connection report` abre e autentica em todas as conexões do
+`flexberry.yaml`. O relatório mostra status, dialeto, schema, versão do banco,
+tempo de resposta e destaca a conexão padrão.
+
 `config install` cria somente configurações editáveis:
 
 ```text

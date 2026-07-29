@@ -10,7 +10,9 @@ import (
 
 	"github.com/PhelipeViana/flexberry"
 	"github.com/PhelipeViana/flexberry/internal/cli"
+	"github.com/PhelipeViana/flexberry/internal/cliui"
 	"github.com/PhelipeViana/flexberry/internal/config"
+	"github.com/PhelipeViana/flexberry/internal/connectioncheck"
 	"github.com/PhelipeViana/flexberry/internal/factorygen"
 	"github.com/PhelipeViana/flexberry/internal/factoryrun"
 	"github.com/PhelipeViana/flexberry/internal/generator"
@@ -21,7 +23,7 @@ import (
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "\n✗ Não foi possível concluir a operação.")
+		fmt.Fprintln(os.Stderr, "\n"+cliui.Failure("✗ Não foi possível concluir a operação."))
 		fmt.Fprintf(os.Stderr, "  Motivo: %v\n", err)
 		os.Exit(1)
 	}
@@ -92,8 +94,8 @@ func configureProject(title string, args []string) error {
 		return err
 	}
 
-	fmt.Printf("\nFlexberry · %s\n\n", title)
-	fmt.Println("→ Preparando configurações...")
+	cliui.PrintTitle("Flexberry · " + title)
+	fmt.Println(cliui.Info("→ Preparando configurações..."))
 	result, err := initializer.Run(root, *force)
 	if err != nil {
 		return fmt.Errorf("preparar configurações: %w", err)
@@ -112,12 +114,12 @@ func configureProject(title string, args []string) error {
 		fmt.Printf("  = %d arquivo(s) existente(s) preservado(s)\n", len(result.Skipped))
 	}
 
-	fmt.Printf("\n→ Instalando Flexberry %s...\n", flexberry.Version)
+	fmt.Printf("\n%s\n", cliui.Info(fmt.Sprintf("→ Instalando Flexberry %s...", flexberry.Version)))
 	if err := installProjectDependency(root); err != nil {
 		return err
 	}
-	fmt.Println("  ✓ Dependência instalada")
-	fmt.Println("\n✓ Operação concluída com sucesso.")
+	fmt.Println("  " + cliui.Success("✓ Dependência instalada"))
+	fmt.Println("\n" + cliui.Success("✓ Operação concluída com sucesso."))
 	fmt.Println("\nPróximos passos:")
 	fmt.Println("  1. Revise internal/flexberry/flexberry.yaml")
 	fmt.Println("  2. Execute .\\flexberry.exe validate --resolve")
@@ -265,9 +267,11 @@ func runConnection(args []string) error {
 	if len(args) > 0 && args[0] != "report" {
 		return fmt.Errorf("use connection report")
 	}
-	fmt.Println("\nFlexberry · Conexões")
-	fmt.Println()
-	return runValidate([]string{"--resolve"})
+	root, err := project.FindRoot(".")
+	if err != nil {
+		return err
+	}
+	return connectioncheck.Run(root)
 }
 
 func reloadORM(args []string) error {

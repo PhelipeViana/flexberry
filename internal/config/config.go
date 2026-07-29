@@ -43,7 +43,8 @@ type Config struct {
 
 type EnvironmentConfig struct {
 	File     string `yaml:"file"`
-	Variable string `yaml:"variable"`
+	Ambient  string `yaml:"ambient"`
+	Variable string `yaml:"variable,omitempty"`
 	Fallback string `yaml:"fallback"`
 }
 
@@ -114,6 +115,9 @@ func Decode(reader io.Reader) (*Config, error) {
 	if cfg.Pagination.MaxPerPage == 0 {
 		cfg.Pagination.MaxPerPage = MaxPerPage
 	}
+	if strings.TrimSpace(cfg.Environment.Ambient) == "" {
+		cfg.Environment.Ambient = cfg.Environment.Variable
+	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -126,8 +130,8 @@ func (c *Config) Validate() error {
 	if c.Version != 1 {
 		problems = append(problems, fmt.Sprintf("version deve ser 1, recebido %d", c.Version))
 	}
-	if strings.TrimSpace(c.Environment.Variable) == "" {
-		problems = append(problems, "environment.variable é obrigatório")
+	if strings.TrimSpace(c.Environment.Ambient) == "" {
+		problems = append(problems, "environment.ambient é obrigatório")
 	}
 	if strings.TrimSpace(c.Default.Variable) == "" {
 		problems = append(problems, "default.variable é obrigatório")
@@ -179,7 +183,7 @@ func (c *Config) Validate() error {
 }
 
 func (c *Config) EnvironmentName(lookup func(string) string) string {
-	return valueOrFallback(lookup(c.Environment.Variable), c.Environment.Fallback)
+	return valueOrFallback(lookup(c.Environment.Ambient), c.Environment.Fallback)
 }
 
 func (c *Config) DefaultConnection(lookup func(string) string) (string, error) {

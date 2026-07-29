@@ -6,7 +6,7 @@ version: 1
 # Arquivo local que contém as variáveis usadas nas conexões.
 environment:
   file: ./.env
-  variable: APPLICATION_ENV
+  ambient: APPLICATION_ENV
   fallback: development
 
 # Variável que seleciona a conexão padrão.

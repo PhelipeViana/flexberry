@@ -8,8 +8,8 @@ import (
 const validConfig = `
 version: 1
 environment:
-  file: ./seguranca/database.env
-  variable: APPLICATION_ENV
+  file: ./.env
+  ambient: APPLICATION_ENV
   fallback: development
 default:
   variable: DATABASE_CONNECTION
@@ -61,6 +61,17 @@ func TestDecodeRejectsUnknownField(t *testing.T) {
 	_, err := Decode(strings.NewReader(validConfig + "\nunknown: true\n"))
 	if err == nil {
 		t.Fatal("esperava erro para campo desconhecido")
+	}
+}
+
+func TestDecodeAcceptsLegacyEnvironmentVariable(t *testing.T) {
+	legacy := strings.Replace(validConfig, "ambient: APPLICATION_ENV", "variable: APPLICATION_ENV", 1)
+	cfg, err := Decode(strings.NewReader(legacy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Environment.Ambient != "APPLICATION_ENV" {
+		t.Fatalf("ambient legado não foi normalizado: %#v", cfg.Environment)
 	}
 }
 

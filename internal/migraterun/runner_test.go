@@ -1,6 +1,7 @@
 package migraterun
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -71,5 +72,45 @@ func TestHistoryLocationDoesNotExposeCredentials(t *testing.T) {
 	}
 	if strings.Contains(got, "secret") {
 		t.Fatal("credencial exposta")
+	}
+}
+
+func TestMigrationAdviceDoesNotBlameInternetForLocalOracle(t *testing.T) {
+	connection := config.Connection{
+		Dialect: "oracle",
+		URL:     "oracle://user:secret@127.0.0.1:1599/FREEPDB1",
+	}
+	message, solution := migrationConnectionAdvice(
+		connection,
+		fmt.Errorf("ORA-12564: TNS connection refused"),
+	)
+	if !strings.Contains(message, "não depende da internet") ||
+		!strings.Contains(solution, "listener Oracle") {
+		t.Fatalf("diagnóstico local inesperado: %s / %s", message, solution)
+	}
+}
+
+func TestMigrationAdviceMentionsInternetForRemoteHost(t *testing.T) {
+	connection := config.Connection{
+		Dialect: "oracle",
+		URL:     "oracle://user:secret@db.example.com:1521/FREEPDB1",
+	}
+	message, solution := migrationConnectionAdvice(
+		connection,
+		fmt.Errorf("ORA-12564: TNS connection refused"),
+	)
+	if !strings.Contains(message, "host remoto") || !strings.Contains(solution, "internet/VPN") {
+		t.Fatalf("diagnóstico remoto inesperado: %s / %s", message, solution)
+	}
+}
+
+func TestMigrationAdviceExplainsDNSFailure(t *testing.T) {
+	connection := config.Connection{
+		Dialect: "postgres",
+		URL:     "postgres://user:secret@db.example.com:5432/app",
+	}
+	message, _ := migrationConnectionAdvice(connection, fmt.Errorf("lookup db.example.com: no such host"))
+	if !strings.Contains(message, "DNS") || !strings.Contains(message, "internet") {
+		t.Fatalf("diagnóstico DNS inesperado: %s", message)
 	}
 }

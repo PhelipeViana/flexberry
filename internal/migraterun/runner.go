@@ -59,14 +59,92 @@ func Run(root string, base *config.Config, cfg config.MigrateConfig) error {
 	applied, skipped, runErr := runConnection(connection, cfg.History, files)
 	if runErr != nil {
 		fmt.Printf("  %s %s\n", cliui.Failure("✗ ERRO:"), runErr)
+		message, solution := migrationConnectionAdvice(connection, runErr)
+		fmt.Printf("  %s %s\n", cliui.Warning("⚠ Diagnóstico:"), message)
 		return cliui.NewUserError(
 			"A conexão padrão não concluiu as migrations.",
-			"Corrija a conexão indicada acima e execute Migrate Run novamente.",
+			solution,
 		)
 	}
 	fmt.Printf("  %s %d aplicada(s), %d já executada(s)\n", cliui.Success("✓ OK"), applied, skipped)
 	fmt.Println("\n" + cliui.Success("✓ Migrations atualizadas na conexão padrão."))
 	return nil
+}
+
+func migrationConnectionAdvice(connection config.Connection, err error) (string, string) {
+	detail := strings.ToLower(err.Error())
+	host := connectionHost(connection)
+	local := isLocalHost(host)
+
+	switch {
+	case strings.Contains(detail, "ora-12564"),
+		strings.Contains(detail, "connection refused"),
+		strings.Contains(detail, "actively refused"),
+		strings.Contains(detail, "no connection could be made"):
+		if local {
+			return fmt.Sprintf(
+					"%s é uma conexão local; este erro não depende da internet e indica que a porta, o container ou o listener não aceitou a sessão",
+					host,
+				),
+				"Confirme o container, a porta publicada e o listener Oracle; depois execute Connection e Migrate Run novamente."
+		}
+		return fmt.Sprintf(
+				"%s é um host remoto; o servidor recusou a conexão e pode haver indisponibilidade, firewall, VPN ou falha de internet",
+				host,
+			),
+			"Confira sua internet/VPN, DNS, firewall, host e porta; depois execute Connection e Migrate Run novamente."
+	case strings.Contains(detail, "no such host"),
+		strings.Contains(detail, "server misbehaving"),
+		strings.Contains(detail, "name resolution"):
+		return fmt.Sprintf(
+				"não foi possível resolver o host %s; a causa pode ser DNS, VPN ou conexão com a internet",
+				host,
+			),
+			"Confira sua internet/VPN e o nome do host no connection.yaml; depois execute Connection novamente."
+	case strings.Contains(detail, "timeout"),
+		strings.Contains(detail, "deadline exceeded"):
+		if local {
+			return fmt.Sprintf(
+					"%s é local; o serviço não respondeu no tempo esperado e a internet não é necessária",
+					host,
+				),
+				"Confira a saúde do container, a porta e os logs do banco; depois execute Connection novamente."
+		}
+		return fmt.Sprintf(
+				"%s não respondeu; verifique internet, VPN, rota, firewall e disponibilidade do servidor",
+				host,
+			),
+			"Teste sua internet/VPN e a conectividade com o host e a porta antes de repetir Migrate Run."
+	case strings.Contains(detail, "ora-12514"):
+		return "o listener respondeu, mas o serviço Oracle configurado não foi encontrado",
+			"Confira ORACLE_SERVICE no .env e os serviços registrados no listener; depois execute Connection novamente."
+	default:
+		return "a conexão foi alcançada, mas o banco recusou ou interrompeu a operação",
+			"Confira a mensagem técnica acima, execute Connection e corrija a configuração antes de repetir Migrate Run."
+	}
+}
+
+func connectionHost(connection config.Connection) string {
+	if strings.EqualFold(connection.Dialect, "mysql") {
+		if start := strings.Index(connection.URL, "@tcp("); start >= 0 {
+			remainder := connection.URL[start+5:]
+			if end := strings.Index(remainder, ")"); end >= 0 {
+				hostPort := remainder[:end]
+				if parsed, err := url.Parse("tcp://" + hostPort); err == nil {
+					return parsed.Hostname()
+				}
+			}
+		}
+	}
+	if parsed, err := url.Parse(connection.URL); err == nil && parsed.Hostname() != "" {
+		return parsed.Hostname()
+	}
+	return "host configurado"
+}
+
+func isLocalHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 func loadPlans(folder string) ([]migrationFile, error) {

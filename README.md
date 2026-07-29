@@ -4,11 +4,30 @@ CLI experimental para migrations, ORM e factories em projetos Go.
 
 ## Instalação
 
-Baixe `flexberry-windows-amd64.exe` na página de Releases, renomeie para
-`flexberry.exe` e coloque-o na raiz do projeto, ao lado do `go.mod`.
+### Downloads
+
+| Sistema | Arquitetura | Download |
+|:---|:---|:---|
+| Windows | x86-64 / AMD64 | [flexberry-windows-amd64.exe](https://github.com/PhelipeViana/flexberry/releases/download/v0.1.0-alpha.12/flexberry-windows-amd64.exe) |
+| Linux | x86-64 / AMD64 | [flexberry-linux-amd64](https://github.com/PhelipeViana/flexberry/releases/download/v0.1.0-alpha.12/flexberry-linux-amd64) |
+| Verificação | SHA-256 | [checksums.txt](https://github.com/PhelipeViana/flexberry/releases/download/v0.1.0-alpha.12/checksums.txt) |
+
+Todos os arquivos e versões anteriores ficam disponíveis em
+[GitHub Releases](https://github.com/PhelipeViana/flexberry/releases).
+
+No Windows, renomeie o arquivo para `flexberry.exe`, coloque-o na raiz do
+projeto, ao lado do `go.mod`, e execute:
 
 ```powershell
 .\flexberry.exe
+```
+
+No Linux:
+
+```bash
+mv flexberry-linux-amd64 flexberry
+chmod +x flexberry
+./flexberry
 ```
 
 O menu é carregado do arquivo público `config/menu.json`. Sem internet, o

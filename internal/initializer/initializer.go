@@ -20,10 +20,9 @@ func Run(projectRoot string, force bool) (Result, error) {
 		content      string
 		secret       bool
 	}{
-		{config.DefaultRelativePath, SimplifiedConfigTemplate, false},
-		{"internal/flexberry/factory.yaml", FactoryConfigTemplate, false},
-		{"internal/flexberry/custom.go", CustomTemplate, true},
-		{"internal/flexberry/orm/.gitkeep", "", false},
+		{config.DefaultRelativePath, ConnectionConfigTemplateV2, false},
+		{config.ORMRelativePath, ORMConfigTemplateV2, false},
+		{"internal/flexberry/factory.yaml", FactoryConfigTemplateV3, false},
 		{"seguranca/database.env", EnvTemplate, true},
 		{"seguranca/database.example.env", EnvTemplate, false},
 	}

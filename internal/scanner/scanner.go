@@ -139,7 +139,7 @@ func mapStruct(fileSet *token.FileSet, packageName, importPath, relative, name s
 		Package:    packageName,
 		ImportPath: importPath,
 		SourceFile: relative,
-		Table:      snakeCase(name),
+		Table:      pluralTable(snakeCase(name)),
 	}
 
 	var relationCandidates []Relation
@@ -363,6 +363,13 @@ func snakeCase(value string) string {
 		}
 	}
 	return string(result)
+}
+
+func pluralTable(value string) string {
+	if strings.HasSuffix(value, "s") {
+		return value
+	}
+	return value + "s"
 }
 
 func importAlias(importPath string) string {

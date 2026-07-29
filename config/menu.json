@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "message": "Versão experimental",
+  "items": [
+    {
+      "label": "Instalar configuração",
+      "command": "config install",
+      "enabled": true
+    },
+    {
+      "label": "Atualizar configuração",
+      "command": "config update",
+      "enabled": true
+    },
+    {
+      "label": "Remover configuração",
+      "command": "config remove",
+      "enabled": true
+    },
+    {
+      "label": "Sincronizar ORM",
+      "command": "orm sync",
+      "enabled": true
+    },
+    {
+      "label": "Criar factories",
+      "command": "factory create",
+      "enabled": true
+    },
+    {
+      "label": "Executar factories",
+      "command": "factory run",
+      "enabled": true
+    },
+    {
+      "label": "Sair",
+      "command": "exit",
+      "enabled": true
+    }
+  ]
+}

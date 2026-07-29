@@ -158,9 +158,6 @@ func (c *Config) Validate() error {
 			c.Default.Fallback,
 		))
 	}
-	if len(c.Entities.Paths) == 0 {
-		problems = append(problems, "entities.paths precisa conter ao menos um caminho")
-	}
 	if strings.TrimSpace(c.Generate.Output) == "" {
 		problems = append(problems, "generate.output é obrigatório")
 	}

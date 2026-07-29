@@ -1,9 +1,11 @@
 package project
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // FindRoot walks from start towards the filesystem root until it finds go.mod.
@@ -28,4 +30,20 @@ func FindRoot(start string) (string, error) {
 		}
 		current = parent
 	}
+}
+
+func ModulePath(root string) (string, error) {
+	file, err := os.Open(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) == 2 && fields[0] == "module" {
+			return fields[1], nil
+		}
+	}
+	return "", fmt.Errorf("module não encontrado em go.mod")
 }

@@ -1,0 +1,6 @@
+# Artefatos locais de compilação
+/dist/
+/flexberry.exe
+
+# Executor temporário criado por `factory run`
+/.flexberry-runner/

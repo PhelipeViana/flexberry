@@ -49,7 +49,7 @@ func Run(root, modulePath string, factoryConfig config.FactoryConfig, entities [
 	build := exec.Command("go", "build", "-o", runnerPath, "./.flexberry-runner")
 	build.Dir = root
 	if output, buildErr := build.CombinedOutput(); buildErr != nil {
-		return friendlyBuildError(string(output))
+		return friendlyBuildError(string(output), modulePath)
 	}
 
 	command := exec.Command(runnerPath)
@@ -92,13 +92,23 @@ func validateFactoryPackage(path, configured string) error {
 
 var missingModule = regexp.MustCompile(`no required module provides package ([^;\s]+)`)
 
-func friendlyBuildError(output string) error {
+func friendlyBuildError(output, modulePath string) error {
 	detail := strings.TrimSpace(output)
 	if match := missingModule.FindStringSubmatch(detail); len(match) == 2 {
+		missing := match[1]
+		internalPrefix := strings.TrimSuffix(modulePath, "/") + "/internal/"
+		if strings.HasPrefix(missing, internalPrefix) {
+			relative := strings.TrimPrefix(missing, strings.TrimSuffix(modulePath, "/")+"/")
+			return fmt.Errorf(
+				"pacote interno do projeto não encontrado: %s; verifique se a pasta %q e seus arquivos Go existem, corrija o import da entidade e execute ORM Reload e Factory Reload",
+				missing,
+				relative,
+			)
+		}
 		return fmt.Errorf(
 			"dependência Go ausente: %s; execute go get %s e tente novamente",
-			match[1],
-			match[1],
+			missing,
+			missing,
 		)
 	}
 	if detail == "" {
@@ -144,17 +154,36 @@ func runnerSource(modulePath string, cfg config.FactoryConfig, entities []scanne
 		fmt.Fprintf(&b, "\t\tfactories.%sFactory(),\n", entity.Name)
 	}
 	b.WriteString(`	}
+	failures := make([]string, 0)
+	blocked := make(map[string]bool)
 	for index := len(values)-1; index >= 0; index-- {
 		if values[index].Active && values[index].Update {
-			if err := values[index].Clean(ctx); err != nil { fail(err.Error()) }
+			if err := values[index].Clean(ctx); err != nil {
+				message := values[index].Name + ": " + err.Error()
+				fmt.Fprintln(os.Stderr, "✗", message)
+				failures = append(failures, message)
+				blocked[values[index].Name] = true
+			}
 		}
 	}
 	for _, factory := range values {
 		if !factory.Active { continue }
+		if blocked[factory.Name] {
+			fmt.Println("⚠", factory.Name, "ignorada porque a limpeza falhou")
+			continue
+		}
 		factory.Update = false
 		result, err := factory.Run(ctx)
-		if err != nil { fail(err.Error()) }
+		if err != nil {
+			message := factory.Name + ": " + err.Error()
+			fmt.Fprintln(os.Stderr, "✗", message)
+			failures = append(failures, message)
+			continue
+		}
 		fmt.Printf("✓ %s: %d registro(s) em %s\n", result.Name, result.Created, result.Table)
+	}
+	if len(failures) > 0 {
+		fmt.Printf("⚠ Factories concluídas com %d alerta(s); as demais continuaram normalmente.\n", len(failures))
 	}
 }
 

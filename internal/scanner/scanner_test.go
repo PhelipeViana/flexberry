@@ -1,0 +1,66 @@
+package scanner
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/PhelipeViana/flexberry/internal/config"
+)
+
+func TestScanLenientWarnsAndSkipsEntityWithEmptyInternalImport(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "go.mod"), "module example.test/app\n")
+	writeTestFile(t, filepath.Join(root, "internal/modules/cidades/domain/.keep"), "")
+	writeTestFile(t, filepath.Join(root, "internal/modules/clientes/domain/cliente.go"), `package domain
+import cidades "example.test/app/internal/modules/cidades/domain"
+type Cliente struct {
+	ID int64 `+"`db:\"id\"`"+`
+	CidadeID int64 `+"`db:\"cidade_id\"`"+`
+	Cidade cidades.Cidade
+}`)
+
+	cfg := &config.Config{Entities: config.EntitiesConfig{
+		Paths: []string{"internal/modules/**/domain/*.go"},
+	}}
+	result, err := ScanLenient(root, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Entities) != 0 {
+		t.Fatalf("entidade inválida não foi ignorada: %#v", result.Entities)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "está vazio") {
+		t.Fatalf("alerta inesperado: %#v", result.Warnings)
+	}
+
+	if _, err := Scan(root, cfg); err == nil || !strings.Contains(err.Error(), "está vazio") {
+		t.Fatalf("scan estrito deveria bloquear com mensagem clara: %v", err)
+	}
+}
+
+func TestPruneUnresolvedRelationsRemovesTransitiveDependents(t *testing.T) {
+	result := pruneUnresolvedRelations(Result{Entities: []Entity{
+		{Name: "Notificacao", Relations: []Relation{
+			{Name: "Cliente", Type: "Cliente", Kind: "belongsTo", ForeignKey: "cliente_id"},
+		}},
+		{Name: "Evento"},
+	}})
+	if len(result.Entities) != 1 || result.Entities[0].Name != "Evento" {
+		t.Fatalf("entidades restantes inesperadas: %#v", result.Entities)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "Notificacao") {
+		t.Fatalf("alertas inesperados: %#v", result.Warnings)
+	}
+}
+
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}

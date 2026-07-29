@@ -15,12 +15,15 @@ import (
 )
 
 type Result struct {
-	Created, Updated, Preserved int
+	Created, Updated, Preserved, Disabled int
 }
 
 var fieldExpression = regexp.MustCompile(`(?m)^\s*"([^"]+)"\s*:\s*(.+),\s*$`)
 
 func Generate(root, modulePath string, cfg config.FactoryConfig, orm config.ORMConfig, entities []scanner.Entity) (Result, error) {
+	if err := validateRelationTargets(entities); err != nil {
+		return Result{}, err
+	}
 	output := filepath.Join(root, filepath.FromSlash(cfg.Mapper.Path))
 	relative, err := filepath.Rel(root, output)
 	if err != nil || relative == "." || relative == ".." || filepath.IsAbs(relative) {
@@ -30,8 +33,11 @@ func Generate(root, modulePath string, cfg config.FactoryConfig, orm config.ORMC
 		return Result{}, err
 	}
 	var result Result
+	expected := make(map[string]bool, len(entities))
 	for _, entity := range entities {
-		path := filepath.Join(output, snake(entity.Name)+"_factory.go")
+		filename := snake(entity.Name) + "_factory.go"
+		expected[filename] = true
+		path := filepath.Join(output, filename)
 		existing := make(map[string]string)
 		current, readErr := os.ReadFile(path)
 		if readErr == nil {
@@ -58,7 +64,56 @@ func Generate(root, modulePath string, cfg config.FactoryConfig, orm config.ORMC
 			result.Created++
 		}
 	}
+	entries, err := os.ReadDir(output)
+	if err != nil {
+		return result, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), "_factory.go") || expected[entry.Name()] {
+			continue
+		}
+		source := filepath.Join(output, entry.Name())
+		target := nextDisabledPath(source)
+		if err := os.Rename(source, target); err != nil {
+			return result, fmt.Errorf("desativar factory sem entidade %s: %w", entry.Name(), err)
+		}
+		result.Disabled++
+	}
 	return result, nil
+}
+
+func nextDisabledPath(source string) string {
+	target := source + ".disabled"
+	for index := 2; ; index++ {
+		if _, err := os.Stat(target); os.IsNotExist(err) {
+			return target
+		}
+		target = fmt.Sprintf("%s.disabled.%d", source, index)
+	}
+}
+
+func validateRelationTargets(entities []scanner.Entity) error {
+	available := make(map[string]bool, len(entities))
+	for _, entity := range entities {
+		available[entity.Name] = true
+	}
+	for _, entity := range entities {
+		for _, relation := range entity.Relations {
+			if relation.Kind != "belongsTo" || relation.ForeignKey == "" {
+				continue
+			}
+			target := typeName(relation.Type)
+			if !available[target] {
+				return fmt.Errorf(
+					"%s.%s referencia a entidade %s, mas ela não foi encontrada; verifique entities.paths e o arquivo da entidade antes de executar Factory Reload",
+					entity.Name,
+					relation.Name,
+					target,
+				)
+			}
+		}
+	}
+	return nil
 }
 
 func render(modulePath string, cfg config.FactoryConfig, orm config.ORMConfig, entity scanner.Entity, entities []scanner.Entity, existing map[string]string) ([]byte, error) {

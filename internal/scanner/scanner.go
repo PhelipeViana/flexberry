@@ -20,6 +20,21 @@ import (
 )
 
 func Scan(projectRoot string, cfg *config.Config) (Result, error) {
+	return scan(projectRoot, cfg, false)
+}
+
+// ScanLenient ignores source files whose local imports are missing and reports
+// warnings. It is used by factories so one incomplete module does not prevent
+// valid factories from being generated and executed.
+func ScanLenient(projectRoot string, cfg *config.Config) (Result, error) {
+	result, err := scan(projectRoot, cfg, true)
+	if err != nil {
+		return Result{}, err
+	}
+	return pruneUnresolvedRelations(result), nil
+}
+
+func scan(projectRoot string, cfg *config.Config, lenient bool) (Result, error) {
 	modulePath, err := readModulePath(filepath.Join(projectRoot, "go.mod"))
 	if err != nil {
 		return Result{}, err
@@ -68,14 +83,24 @@ func Scan(projectRoot string, cfg *config.Config) (Result, error) {
 	}
 
 	var entities []Entity
+	var warnings []string
 	for _, relative := range files {
+		if problem, err := missingLocalImport(projectRoot, modulePath, relative); err != nil {
+			return Result{}, err
+		} else if problem != "" {
+			if !lenient {
+				return Result{}, fmt.Errorf("%s", problem)
+			}
+			warnings = append(warnings, problem)
+			continue
+		}
 		found, err := scanFile(projectRoot, modulePath, relative, cfg.Entities.Overrides)
 		if err != nil {
 			return Result{}, err
 		}
 		entities = append(entities, found...)
 	}
-	if len(entities) == 0 {
+	if len(entities) == 0 && len(warnings) == 0 {
 		return Result{}, fmt.Errorf("nenhuma struct com tags db encontrada nos arquivos mapeados")
 	}
 
@@ -86,7 +111,93 @@ func Scan(projectRoot string, cfg *config.Config) (Result, error) {
 		}
 		return entities[i].ImportPath < entities[j].ImportPath
 	})
-	return Result{Entities: entities, Files: files}, nil
+	return Result{Entities: entities, Files: files, Warnings: warnings}, nil
+}
+
+func missingLocalImport(projectRoot, modulePath, relative string) (string, error) {
+	path := filepath.Join(projectRoot, filepath.FromSlash(relative))
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+	if err != nil {
+		return "", fmt.Errorf("analisar imports de %s: %w", relative, err)
+	}
+	prefix := strings.TrimSuffix(modulePath, "/") + "/"
+	for _, specification := range file.Imports {
+		importPath, err := strconv.Unquote(specification.Path.Value)
+		if err != nil || !strings.HasPrefix(importPath, prefix) {
+			continue
+		}
+		local := strings.TrimPrefix(importPath, prefix)
+		directory := filepath.Join(projectRoot, filepath.FromSlash(local))
+		entries, err := os.ReadDir(directory)
+		if os.IsNotExist(err) {
+			return fmt.Sprintf(
+				"%s ignorado: pacote interno %q não existe; crie a entidade ou corrija o import",
+				relative, local,
+			), nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("ler pacote interno %s: %w", local, err)
+		}
+		hasSource := false
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".go") && !strings.HasSuffix(entry.Name(), "_test.go") {
+				hasSource = true
+				break
+			}
+		}
+		if !hasSource {
+			return fmt.Sprintf(
+				"%s ignorado: pacote interno %q está vazio; crie a entidade ou corrija o import",
+				relative, local,
+			), nil
+		}
+	}
+	return "", nil
+}
+
+func pruneUnresolvedRelations(result Result) Result {
+	for {
+		available := make(map[string]bool, len(result.Entities))
+		for _, entity := range result.Entities {
+			available[entity.Name] = true
+		}
+		removed := false
+		filtered := make([]Entity, 0, len(result.Entities))
+		for _, entity := range result.Entities {
+			missing := ""
+			for _, relation := range entity.Relations {
+				if relation.Kind != "belongsTo" || relation.ForeignKey == "" {
+					continue
+				}
+				target := relationTypeName(relation.Type)
+				if !available[target] {
+					missing = target
+					break
+				}
+			}
+			if missing != "" {
+				result.Warnings = append(result.Warnings, fmt.Sprintf(
+					"entidade %s ignorada: depende da entidade ausente %s",
+					entity.Name, missing,
+				))
+				removed = true
+				continue
+			}
+			filtered = append(filtered, entity)
+		}
+		result.Entities = filtered
+		if !removed {
+			return result
+		}
+	}
+}
+
+func relationTypeName(value string) string {
+	value = strings.TrimLeft(value, "*[]")
+	if index := strings.LastIndex(value, "."); index >= 0 {
+		return value[index+1:]
+	}
+	return value
 }
 
 func scanFile(projectRoot, modulePath, relative string, overrides map[string]config.EntityOverride) ([]Entity, error) {

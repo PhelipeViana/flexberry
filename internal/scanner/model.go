@@ -32,4 +32,5 @@ type Relation struct {
 type Result struct {
 	Entities []Entity
 	Files    []string
+	Warnings []string
 }

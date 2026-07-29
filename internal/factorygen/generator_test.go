@@ -90,3 +90,46 @@ func TestGenerateYAMLRulesInterceptPreviouslyGeneratedExpression(t *testing.T) {
 		t.Fatalf("regra do YAML não interceptou a expressão existente:\n%s", content)
 	}
 }
+
+func TestGenerateRejectsMissingRelationshipEntity(t *testing.T) {
+	entities := []scanner.Entity{{
+		Name: "Cliente", Table: "clientes",
+		Fields: []scanner.Field{{Name: "CidadeID", Column: "cidade_id", GoType: "int64"}},
+		Relations: []scanner.Relation{{
+			Name: "Cidade", Type: "Cidade", Kind: "belongsTo", ForeignKey: "cidade_id",
+		}},
+	}}
+	_, err := Generate(t.TempDir(), "example.test/app", config.FactoryConfig{}, config.ORMConfig{}, entities)
+	if err == nil {
+		t.Fatal("era esperado erro para entidade relacionada ausente")
+	}
+	if !strings.Contains(err.Error(), "Cliente.Cidade") || !strings.Contains(err.Error(), "entities.paths") {
+		t.Fatalf("mensagem inesperada: %s", err)
+	}
+}
+
+func TestGenerateDisablesFactoryWhoseEntityWasSkipped(t *testing.T) {
+	root := t.TempDir()
+	output := filepath.Join(root, "factories")
+	if err := os.MkdirAll(output, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(output, "cliente_factory.go")
+	if err := os.WriteFile(stale, []byte("package factories\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.FactoryConfig{
+		Mapper:   config.FactoryMapper{Path: "factories", Package: "factories"},
+		Defaults: config.FactoryDefaults{Count: 1},
+	}
+	result, err := Generate(root, "example.test/app", cfg, config.ORMConfig{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Disabled != 1 {
+		t.Fatalf("desativadas = %d; esperado 1", result.Disabled)
+	}
+	if _, err := os.Stat(stale + ".disabled"); err != nil {
+		t.Fatalf("factory não foi preservada como desativada: %v", err)
+	}
+}

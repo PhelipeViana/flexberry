@@ -8,9 +8,9 @@ CLI experimental para migrations, ORM e factories em projetos Go.
 
 | Sistema | Arquitetura | Download |
 |:---|:---|:---|
-| Windows | x86-64 / AMD64 | [flexberry-windows-amd64.exe](https://github.com/PhelipeViana/flexberry/releases/download/v0.1.0-alpha.12/flexberry-windows-amd64.exe) |
-| Linux | x86-64 / AMD64 | [flexberry-linux-amd64](https://github.com/PhelipeViana/flexberry/releases/download/v0.1.0-alpha.12/flexberry-linux-amd64) |
-| Verificação | SHA-256 | [checksums.txt](https://github.com/PhelipeViana/flexberry/releases/download/v0.1.0-alpha.12/checksums.txt) |
+| Windows | x86-64 / AMD64 | [flexberry-windows-amd64.exe](https://github.com/PhelipeViana/flexberry/releases/download/v0.1.0-alpha.13/flexberry-windows-amd64.exe) |
+| Linux | x86-64 / AMD64 | [flexberry-linux-amd64](https://github.com/PhelipeViana/flexberry/releases/download/v0.1.0-alpha.13/flexberry-linux-amd64) |
+| Verificação | SHA-256 | [checksums.txt](https://github.com/PhelipeViana/flexberry/releases/download/v0.1.0-alpha.13/checksums.txt) |
 
 Todos os arquivos e versões anteriores ficam disponíveis em
 [GitHub Releases](https://github.com/PhelipeViana/flexberry/releases).

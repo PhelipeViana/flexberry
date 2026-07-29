@@ -426,7 +426,7 @@ func loadFactoryProject() (factoryProject, error) {
 	base.Entities = ormConfig.Entities
 	base.Generate.Output = ormConfig.Output.Path
 	base.Generate.Package = ormConfig.Output.Package
-	scanned, err := scanner.Scan(root, base)
+	scanned, err := scanner.ScanLenient(root, base)
 	if err != nil {
 		return factoryProject{}, err
 	}
@@ -442,25 +442,37 @@ func createFactories() error {
 	if err != nil {
 		return err
 	}
-	files, err := generator.Build(value.base, value.scan)
+	result, err := syncFactories(value)
 	if err != nil {
 		return err
 	}
+	fmt.Printf("✓ Factories: %d criada(s), %d atualizada(s), %d preservada(s), %d desativada(s)\n",
+		result.Created, result.Updated, result.Preserved, result.Disabled)
+	printScanWarnings(value.scan.Warnings)
+	return nil
+}
+
+func syncFactories(value factoryProject) (factorygen.Result, error) {
+	files, err := generator.Build(value.base, value.scan)
+	if err != nil {
+		return factorygen.Result{}, err
+	}
 	if _, err := generator.Write(value.root, value.base, files); err != nil {
-		return err
+		return factorygen.Result{}, err
 	}
 	result, err := factorygen.Generate(value.root, value.modulePath, value.factory, value.orm, value.scan.Entities)
 	if err != nil {
-		return err
+		return factorygen.Result{}, err
 	}
-	fmt.Printf("✓ Factories: %d criada(s), %d atualizada(s), %d preservada(s)\n",
-		result.Created, result.Updated, result.Preserved)
-	return nil
+	return result, nil
 }
 
 func executeFactories() error {
 	value, err := loadFactoryProject()
 	if err != nil {
+		return err
+	}
+	if _, err := syncFactories(value); err != nil {
 		return err
 	}
 	envPath, err := value.base.EnvironmentFile(value.root, config.OSLookup)
@@ -480,7 +492,21 @@ func executeFactories() error {
 	if err != nil {
 		return err
 	}
-	return factoryrun.Run(value.root, value.modulePath, value.factory, value.scan.Entities, name, connection)
+	err = factoryrun.Run(value.root, value.modulePath, value.factory, value.scan.Entities, name, connection)
+	printScanWarnings(value.scan.Warnings)
+	return err
+}
+
+func printScanWarnings(warnings []string) {
+	if len(warnings) == 0 {
+		return
+	}
+	fmt.Println()
+	fmt.Println(cliui.Warning("⚠ Entidades ignoradas:"))
+	for _, warning := range warnings {
+		fmt.Printf("  → %s\n", warning)
+	}
+	fmt.Println(cliui.Muted("  As demais entidades continuaram normalmente."))
 }
 
 func runGenerate(args []string) error {

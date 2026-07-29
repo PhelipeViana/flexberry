@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -15,6 +17,10 @@ import (
 )
 
 func Run(root, modulePath string, factoryConfig config.FactoryConfig, entities []scanner.Entity, connectionName string, connection config.Connection) error {
+	factoryPath := filepath.Join(root, filepath.FromSlash(factoryConfig.Mapper.Path))
+	if err := validateFactoryPackage(factoryPath, factoryConfig.Mapper.Path); err != nil {
+		return err
+	}
 	ordered, err := orderEntities(entities)
 	if err != nil {
 		return err
@@ -35,7 +41,18 @@ func Run(root, modulePath string, factoryConfig config.FactoryConfig, entities [
 	if err := os.WriteFile(filepath.Join(folder, "main.go"), source, 0o600); err != nil {
 		return err
 	}
-	command := exec.Command("go", "run", "./.flexberry-runner")
+	runnerName := "flexberry-runner"
+	if runtime.GOOS == "windows" {
+		runnerName += ".exe"
+	}
+	runnerPath := filepath.Join(folder, runnerName)
+	build := exec.Command("go", "build", "-o", runnerPath, "./.flexberry-runner")
+	build.Dir = root
+	if output, buildErr := build.CombinedOutput(); buildErr != nil {
+		return friendlyBuildError(string(output))
+	}
+
+	command := exec.Command(runnerPath)
 	command.Dir = root
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
@@ -45,7 +62,49 @@ func Run(root, modulePath string, factoryConfig config.FactoryConfig, entities [
 		"FLEXBERRY_RUN_DIALECT="+connection.Dialect,
 		"FLEXBERRY_RUN_DSN="+connection.URL,
 	)
-	return command.Run()
+	if err := command.Run(); err != nil {
+		return fmt.Errorf("a execução das factories foi interrompida; consulte a mensagem exibida acima")
+	}
+	return nil
+}
+
+func validateFactoryPackage(path, configured string) error {
+	entries, err := os.ReadDir(path)
+	if os.IsNotExist(err) {
+		return fmt.Errorf(
+			"factories ainda não foram geradas em %q; execute .\\flexberry.exe factory reload",
+			filepath.ToSlash(configured),
+		)
+	}
+	if err != nil {
+		return fmt.Errorf("ler pasta das factories: %w", err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".go") && !strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"nenhuma factory foi encontrada em %q; execute .\\flexberry.exe factory reload",
+		filepath.ToSlash(configured),
+	)
+}
+
+var missingModule = regexp.MustCompile(`no required module provides package ([^;\s]+)`)
+
+func friendlyBuildError(output string) error {
+	detail := strings.TrimSpace(output)
+	if match := missingModule.FindStringSubmatch(detail); len(match) == 2 {
+		return fmt.Errorf(
+			"dependência Go ausente: %s; execute go get %s e tente novamente",
+			match[1],
+			match[1],
+		)
+	}
+	if detail == "" {
+		detail = "o compilador não informou detalhes"
+	}
+	return fmt.Errorf("não foi possível preparar o executor das factories: %s", detail)
 }
 
 func runnerSource(modulePath string, cfg config.FactoryConfig, entities []scanner.Entity, dialect string) ([]byte, error) {

@@ -54,3 +54,29 @@ func TestRunCreatesInitialStructureAndPreservesExistingFiles(t *testing.T) {
 		t.Fatal("custom.go foi sobrescrito com --force")
 	}
 }
+
+func TestRunRepairsBlankConfiguration(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, filepath.FromSlash(config.ORMRelativePath))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(" \n\t"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Run(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Repaired) != 1 || result.Repaired[0] != config.ORMRelativePath {
+		t.Fatalf("reparos inesperados: %#v", result.Repaired)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != ORMConfigTemplateV2 {
+		t.Fatal("orm.yaml vazio não foi recriado")
+	}
+}

@@ -16,15 +16,19 @@ import (
 const DefaultMenuURL = "https://raw.githubusercontent.com/PhelipeViana/flexberry/main/config/menu.json"
 
 var allowedCommands = map[string]bool{
-	"config install": true,
-	"config update":  true,
-	"config remove":  true,
-	"orm sync":       true,
-	"factory create": true,
-	"factory run":    true,
-	"version":        true,
-	"help":           true,
-	"exit":           true,
+	"connection report": true,
+	"config install":    true,
+	"config update":     true,
+	"config remove":     true,
+	"orm sync":          true,
+	"orm reload":        true,
+	"orm run":           true,
+	"factory create":    true,
+	"factory reload":    true,
+	"factory run":       true,
+	"version":           true,
+	"help":              true,
+	"exit":              true,
 }
 
 type Manifest struct {
@@ -137,12 +141,12 @@ func validateManifest(manifest Manifest) error {
 
 func fallbackManifest() Manifest {
 	return Manifest{Version: 1, Message: "Ferramentas do projeto", Items: []MenuEntry{
-		{Label: "Instalar configuração", Command: "config install", Enabled: true},
-		{Label: "Atualizar configuração", Command: "config update", Enabled: true},
-		{Label: "Remover configuração", Command: "config remove", Enabled: true},
-		{Label: "Sincronizar ORM", Command: "orm sync", Enabled: true},
-		{Label: "Criar factories", Command: "factory create", Enabled: true},
-		{Label: "Executar factories", Command: "factory run", Enabled: true},
+		{Label: "Connection (relatório das conexões do YAML)", Command: "connection report", Enabled: true},
+		{Label: "ORM Reload (atualiza e recria)", Command: "orm reload", Enabled: true},
+		{Label: "ORM Run (roda a atualização)", Command: "orm run", Enabled: true},
+		{Label: "Factories Reload (atualiza e recria)", Command: "factory reload", Enabled: true},
+		{Label: "Factories Run (executa as factories)", Command: "factory run", Enabled: true},
+		{Label: "Flexberry Init (instala ou repara a configuração)", Command: "config install", Enabled: true},
 		{Label: "Sair", Command: "exit", Enabled: true},
 	}}
 }

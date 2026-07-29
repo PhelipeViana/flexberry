@@ -40,6 +40,8 @@ func run(args []string) error {
 	}
 
 	switch args[0] {
+	case "connection", "conexao", "conexão":
+		return runConnection(args[1:])
 	case "config":
 		return runConfig(args[1:])
 	case "orm":
@@ -99,8 +101,13 @@ func configureProject(title string, args []string) error {
 	for _, path := range result.Created {
 		fmt.Printf("  + %s\n", filepath.ToSlash(path))
 	}
+	for _, path := range result.Repaired {
+		fmt.Printf("  ↻ %s (recriado)\n", filepath.ToSlash(path))
+	}
 	if len(result.Created) == 0 {
-		fmt.Printf("  ✓ Arquivos existentes preservados (%d)\n", len(result.Skipped))
+		if len(result.Repaired) == 0 {
+			fmt.Printf("  ✓ Arquivos existentes preservados (%d)\n", len(result.Skipped))
+		}
 	} else if len(result.Skipped) > 0 {
 		fmt.Printf("  = %d arquivo(s) existente(s) preservado(s)\n", len(result.Skipped))
 	}
@@ -227,24 +234,55 @@ func removeConfiguredPath(root, configured string) error {
 }
 
 func runORM(args []string) error {
-	if len(args) == 0 || args[0] != "sync" {
-		return fmt.Errorf("use orm sync")
+	if len(args) == 0 {
+		return fmt.Errorf("use orm reload ou orm run")
 	}
-	return runGenerate(args[1:])
+	switch args[0] {
+	case "reload":
+		return reloadORM(args[1:])
+	case "run", "sync":
+		return runGenerate(args[1:])
+	default:
+		return fmt.Errorf("ação de ORM %q desconhecida; use orm reload ou orm run", args[0])
+	}
 }
 
 func runFactory(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("use factory create ou factory run")
+		return fmt.Errorf("use factory reload ou factory run")
 	}
 	switch args[0] {
-	case "create", "sync":
+	case "reload", "create", "sync":
 		return createFactories()
 	case "run":
 		return executeFactories()
 	default:
 		return fmt.Errorf("ação de factory %q desconhecida", args[0])
 	}
+}
+
+func runConnection(args []string) error {
+	if len(args) > 0 && args[0] != "report" {
+		return fmt.Errorf("use connection report")
+	}
+	fmt.Println("\nFlexberry · Conexões")
+	fmt.Println()
+	return runValidate([]string{"--resolve"})
+}
+
+func reloadORM(args []string) error {
+	root, err := project.FindRoot(".")
+	if err != nil {
+		return err
+	}
+	ormConfig, err := config.LoadORM(filepath.Join(root, filepath.FromSlash(config.ORMRelativePath)))
+	if err != nil {
+		return err
+	}
+	if err := removeConfiguredPath(root, ormConfig.Output.Path); err != nil {
+		return fmt.Errorf("recriar ORM: %w", err)
+	}
+	return runGenerate(args)
 }
 
 type factoryProject struct {
@@ -501,8 +539,10 @@ Uso:
   flexberry config install          cria os três YAMLs
   flexberry config update           cria configurações ausentes
   flexberry config remove --force   remove internal/flexberry
-  flexberry orm sync                gera ou atualiza o ORM
-  flexberry factory create          cria ou atualiza factories
+  flexberry connection report       exibe o relatório das conexões
+  flexberry orm reload              recria completamente o ORM
+  flexberry orm run                 atualiza o ORM
+  flexberry factory reload          cria ou atualiza factories
   flexberry factory run             executa factories
   flexberry validate --resolve      valida configurações e ambiente
   flexberry version                 exibe a versão instalada

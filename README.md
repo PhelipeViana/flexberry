@@ -22,9 +22,11 @@ comandos conhecidos; ele não executa scripts arbitrários.
 .\flexberry.exe config update
 .\flexberry.exe config remove
 
-.\flexberry.exe orm sync
+.\flexberry.exe connection report
+.\flexberry.exe orm reload
+.\flexberry.exe orm run
 
-.\flexberry.exe factory create
+.\flexberry.exe factory reload
 .\flexberry.exe factory run
 
 .\flexberry.exe validate
@@ -53,12 +55,15 @@ Os arquivos contêm comentários explicando cada campo.
 
 # Revise os três arquivos YAML.
 
-.\flexberry.exe orm sync
-.\flexberry.exe factory create
+.\flexberry.exe orm reload
+.\flexberry.exe factory reload
 .\flexberry.exe factory run
 ```
 
-`factory create` sincroniza o ORM antes de gerar as factories. Expressões
+O package Go do ORM e das factories é inferido automaticamente pelo último
+diretório configurado em `path`; não é necessário informar `package`.
+
+`factory reload` sincroniza o ORM antes de gerar as factories. Expressões
 editadas nos arquivos existentes são preservadas. Regras declaradas no
 `factory.yaml` podem usar `COLUNA` ou `TABELA.COLUNA`.
 

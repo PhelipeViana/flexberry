@@ -49,10 +49,10 @@ entities:
     - "**/*_test.go"
     - "**/*.gen.go"
 
-# Destino do código ORM. O caminho é relativo ao go.mod.
+# Destino do ORM, próximo aos paths para facilitar a configuração.
+# O package Go será inferido automaticamente: internal/orm usa package orm.
 output:
-  path: internal/flexberry/orm
-  package: flexberry
+  path: internal/orm
 
 # Exceções para bancos que não seguem a convenção automática.
 # Exemplo:
@@ -67,11 +67,10 @@ const FactoryConfigTemplateV3 = `# Versão do formato das factories.
 version: 1
 
 # Destino dos arquivos Go das factories, relativo ao go.mod.
+# O package Go será inferido automaticamente pelo último nome da pasta.
+# Exemplo: internal/teste/factories usa package factories.
 mapper:
   path: internal/database/factories
-
-  # Package Go usado nos arquivos criados.
-  package: factories
 
 # Expressões Go escolhidas automaticamente para campos gerados.
 expressions:

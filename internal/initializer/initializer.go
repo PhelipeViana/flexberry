@@ -1,17 +1,18 @@
 package initializer
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/PhelipeViana/flexberry/internal/config"
 )
 
 type Result struct {
-	Created []string
-	Skipped []string
+	Created  []string
+	Repaired []string
+	Skipped  []string
 }
 
 func Run(projectRoot string, force bool) (Result, error) {
@@ -30,14 +31,25 @@ func Run(projectRoot string, force bool) (Result, error) {
 	var result Result
 	for _, file := range files {
 		path := filepath.Join(projectRoot, filepath.FromSlash(file.relativePath))
-		if err := writeFile(path, file.content, force && !file.secret); err != nil {
-			if errors.Is(err, os.ErrExist) {
-				result.Skipped = append(result.Skipped, file.relativePath)
-				continue
-			}
+		content, readErr := os.ReadFile(path)
+		exists := readErr == nil
+		if readErr != nil && !os.IsNotExist(readErr) {
+			return result, fmt.Errorf("ler %s: %w", file.relativePath, readErr)
+		}
+		blank := exists && strings.TrimSpace(string(content)) == ""
+		overwrite := blank || (force && !file.secret)
+		if exists && !overwrite {
+			result.Skipped = append(result.Skipped, file.relativePath)
+			continue
+		}
+		if err := writeFile(path, file.content, overwrite); err != nil {
 			return result, err
 		}
-		result.Created = append(result.Created, file.relativePath)
+		if exists {
+			result.Repaired = append(result.Repaired, file.relativePath)
+		} else {
+			result.Created = append(result.Created, file.relativePath)
+		}
 	}
 
 	if err := ensureGitIgnore(projectRoot); err != nil {

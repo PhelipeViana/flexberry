@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -18,7 +19,7 @@ type ORMConfig struct {
 
 type ORMOutput struct {
 	Path    string `yaml:"path"`
-	Package string `yaml:"package"`
+	Package string `yaml:"package,omitempty"`
 }
 
 func LoadORM(path string) (ORMConfig, error) {
@@ -39,11 +40,12 @@ func LoadORM(path string) (ORMConfig, error) {
 	if len(cfg.Entities.Paths) == 0 {
 		return ORMConfig{}, fmt.Errorf("orm.yaml: entities.paths precisa conter ao menos um caminho")
 	}
-	if cfg.Output.Path == "" {
+	if strings.TrimSpace(cfg.Output.Path) == "" {
 		cfg.Output.Path = DefaultGenerateOutput
 	}
-	if cfg.Output.Package == "" {
-		cfg.Output.Package = DefaultGeneratePackage
+	cfg.Output.Package, err = packageFromPath(cfg.Output.Path)
+	if err != nil {
+		return ORMConfig{}, fmt.Errorf("orm.yaml: output.path: %w", err)
 	}
 	cfg.Entities.Overrides = cfg.Overrides
 	return cfg, nil

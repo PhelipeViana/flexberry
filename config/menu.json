@@ -3,33 +3,33 @@
   "message": "Versão experimental",
   "items": [
     {
-      "label": "Instalar configuração",
-      "command": "config install",
+      "label": "Connection (relatório das conexões do YAML)",
+      "command": "connection report",
       "enabled": true
     },
     {
-      "label": "Atualizar configuração",
-      "command": "config update",
+      "label": "ORM Reload (atualiza e recria)",
+      "command": "orm reload",
       "enabled": true
     },
     {
-      "label": "Remover configuração",
-      "command": "config remove",
+      "label": "ORM Run (roda a atualização)",
+      "command": "orm run",
       "enabled": true
     },
     {
-      "label": "Sincronizar ORM",
-      "command": "orm sync",
+      "label": "Factories Reload (atualiza e recria)",
+      "command": "factory reload",
       "enabled": true
     },
     {
-      "label": "Criar factories",
-      "command": "factory create",
-      "enabled": true
-    },
-    {
-      "label": "Executar factories",
+      "label": "Factories Run (executa as factories)",
       "command": "factory run",
+      "enabled": true
+    },
+    {
+      "label": "Flexberry Init (instala ou repara a configuração)",
+      "command": "config install",
       "enabled": true
     },
     {

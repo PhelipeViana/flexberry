@@ -19,7 +19,7 @@ type FactoryConfig struct {
 
 type FactoryMapper struct {
 	Path    string `yaml:"path"`
-	Package string `yaml:"package"`
+	Package string `yaml:"package,omitempty"`
 }
 
 type FactoryExpressions struct {
@@ -56,8 +56,9 @@ func LoadFactory(path string) (FactoryConfig, error) {
 	if strings.TrimSpace(cfg.Mapper.Path) == "" {
 		return FactoryConfig{}, fmt.Errorf("factory.yaml: mapper.path é obrigatório")
 	}
-	if !validName(cfg.Mapper.Package) {
-		return FactoryConfig{}, fmt.Errorf("factory.yaml: mapper.package precisa ser um identificador Go")
+	cfg.Mapper.Package, err = packageFromPath(cfg.Mapper.Path)
+	if err != nil {
+		return FactoryConfig{}, fmt.Errorf("factory.yaml: mapper.path: %w", err)
 	}
 	if cfg.Defaults.Count < 1 {
 		return FactoryConfig{}, fmt.Errorf("factory.yaml: defaults.count precisa ser maior que zero")

@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/PhelipeViana/flexberry"
 	"github.com/PhelipeViana/flexberry/internal/cli"
@@ -21,6 +23,7 @@ import (
 	"github.com/PhelipeViana/flexberry/internal/migraterun"
 	"github.com/PhelipeViana/flexberry/internal/project"
 	"github.com/PhelipeViana/flexberry/internal/scanner"
+	"github.com/PhelipeViana/flexberry/internal/selfupdate"
 )
 
 func main() {
@@ -80,12 +83,38 @@ func run(args []string) error {
 	case "version", "--version", "-v":
 		fmt.Println("flexberry", flexberry.Version)
 		return nil
+	case "self":
+		if len(args) != 2 || args[1] != "update" {
+			return fmt.Errorf("use flexberry self update")
+		}
+		return runSelfUpdate()
 	case "help", "--help", "-h":
 		printHelp()
 		return nil
 	default:
 		return fmt.Errorf("comando %q desconhecido; use flexberry help", args[0])
 	}
+}
+
+func runSelfUpdate() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	release, outdated, err := selfupdate.Check(ctx, flexberry.Version)
+	if err != nil {
+		return fmt.Errorf("verificar atualização: %w", err)
+	}
+	if !outdated {
+		fmt.Println(cliui.Success("✓ O Flexberry já está atualizado."))
+		return nil
+	}
+	fmt.Printf("%s\n", cliui.Info(fmt.Sprintf("→ Baixando Flexberry %s...", release.Version)))
+	path, err := selfupdate.Install(ctx, release)
+	if err != nil {
+		return fmt.Errorf("instalar atualização: %w", err)
+	}
+	fmt.Printf("%s\n", cliui.Success("✓ Download validado. O executável será substituído e reiniciado."))
+	fmt.Printf("  %s\n", path)
+	return nil
 }
 
 func ensureFlexberryConfigured(required ...string) error {

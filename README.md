@@ -34,6 +34,12 @@ O menu é carregado do arquivo público `config/menu.json`. Sem internet, o
 executável usa um menu local seguro. O manifesto online pode apenas habilitar
 comandos conhecidos; ele não executa scripts arbitrários.
 
+Ao iniciar, o Flexberry também consulta os releases publicados. Quando encontra
+uma versão mais nova, o menu normal é substituído pelas opções de baixar e
+instalar automaticamente ou sair. No Windows, o download é validado com o
+`checksums.txt`, o executável atual é preservado como `.old` e a versão nova é
+aberta automaticamente.
+
 ## Comandos
 
 ```powershell
@@ -54,6 +60,7 @@ comandos conhecidos; ele não executa scripts arbitrários.
 
 .\flexberry.exe validate
 .\flexberry.exe version
+.\flexberry.exe self update
 ```
 
 `connection report` abre e autentica em todas as conexões do
@@ -144,3 +151,18 @@ go vet ./...
 go test ./...
 go build -o flexberry.exe ./cmd/flexberry
 ```
+
+## Publicação
+
+Os executáveis são publicados automaticamente pelo workflow
+`.github/workflows/release.yml`. Para publicar uma nova versão, crie e envie
+uma tag semântica:
+
+```powershell
+git tag v0.1.0-alpha.16
+git push origin v0.1.0-alpha.16
+```
+
+O GitHub Actions executa os testes, injeta `0.1.0-alpha.16` no binário, compila
+Windows e Linux, gera `checksums.txt` e publica o release. Tags com hífen, como
+as versões `alpha`, são marcadas automaticamente como pré-release.

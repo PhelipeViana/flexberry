@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PhelipeViana/flexberry"
 	"github.com/PhelipeViana/flexberry/internal/cliui"
+	"github.com/PhelipeViana/flexberry/internal/selfupdate"
 	"golang.org/x/term"
 )
 
@@ -31,6 +33,7 @@ var allowedCommands = map[string]bool{
 	"factory run":       true,
 	"version":           true,
 	"help":              true,
+	"self update":       true,
 	"exit":              true,
 }
 
@@ -79,6 +82,14 @@ func Select() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	manifest, online := LoadManifest(ctx)
+	release, outdated, updateErr := selfupdate.Check(ctx, flexberry.Version)
+	if outdated {
+		manifest.Message = fmt.Sprintf("⚠ Versão %s desatualizada. Nova versão disponível: %s", flexberry.Version, release.Version)
+		manifest.Items = []MenuEntry{
+			{Label: "Baixar e instalar a nova versão automaticamente", Command: "self update", Enabled: true},
+			{Label: "Sair", Command: "exit", Enabled: true},
+		}
+	}
 	if len(manifest.Items) == 0 {
 		return "", fmt.Errorf("nenhuma opção disponível")
 	}
@@ -97,6 +108,9 @@ func Select() (string, error) {
 	}
 	if !online {
 		fmt.Printf("%s⚠ Menu online indisponível; usando opções locais.%s\r\n", cliui.ColorYellow, cliui.ColorReset)
+	}
+	if updateErr != nil {
+		fmt.Printf("%s⚠ Não foi possível verificar se há uma nova versão.%s\r\n", cliui.ColorYellow, cliui.ColorReset)
 	}
 	fmt.Print("Use ↑/↓ e Enter:\r\n\r\n")
 	selected := 0

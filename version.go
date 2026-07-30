@@ -2,4 +2,6 @@
 // Flexberry CLI.
 package flexberry
 
-const Version = "0.1.0-alpha.15"
+// Version is replaced with the release tag at build time by the release
+// workflow. The default is useful for local development builds.
+var Version = "0.1.0-alpha.15"

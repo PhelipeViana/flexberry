@@ -1,0 +1,68 @@
+name: Publicar release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Compilar e publicar
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Validar tag
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag inválida: $GITHUB_REF_NAME"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Testar
+        run: go test ./...
+
+      - name: Compilar executáveis
+        shell: bash
+        run: |
+          mkdir -p dist
+          ldflags="-s -w -X github.com/PhelipeViana/flexberry.Version=${VERSION}"
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags "$ldflags" \
+            -o dist/flexberry-windows-amd64.exe ./cmd/flexberry
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags "$ldflags" \
+            -o dist/flexberry-linux-amd64 ./cmd/flexberry
+
+      - name: Gerar checksums
+        working-directory: dist
+        run: sha256sum flexberry-windows-amd64.exe flexberry-linux-amd64 > checksums.txt
+
+      - name: Publicar no GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          options=(--title "Flexberry ${GITHUB_REF_NAME}" --generate-notes)
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            options+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            dist/flexberry-windows-amd64.exe \
+            dist/flexberry-linux-amd64 \
+            dist/checksums.txt \
+            "${options[@]}"

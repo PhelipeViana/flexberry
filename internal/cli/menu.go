@@ -102,17 +102,7 @@ func Select() (string, error) {
 	}
 	defer term.Restore(int(os.Stdin.Fd()), state)
 
-	fmt.Printf("\r\n%sFlexberry%s\r\n", cliui.ColorBlue, cliui.ColorReset)
-	if manifest.Message != "" {
-		fmt.Printf("%s%s%s\r\n", cliui.ColorCyan, manifest.Message, cliui.ColorReset)
-	}
-	if !online {
-		fmt.Printf("%s⚠ Menu online indisponível; usando opções locais.%s\r\n", cliui.ColorYellow, cliui.ColorReset)
-	}
-	if updateErr != nil {
-		fmt.Printf("%s⚠ Não foi possível verificar se há uma nova versão.%s\r\n", cliui.ColorYellow, cliui.ColorReset)
-	}
-	fmt.Print("Use ↑/↓ e Enter:\r\n\r\n")
+	renderMenuHeader(os.Stdout, manifest, online, updateErr)
 	selected := 0
 	render(manifest.Items, selected)
 	buffer := make([]byte, 3)
@@ -183,12 +173,40 @@ func enabledItems(items []MenuEntry) []MenuEntry {
 
 func render(items []MenuEntry, selected int) {
 	for index, item := range items {
-		arrow, color := "  ", cliui.ColorReset
+		cursor, color := "     ", cliui.ColorReset
 		if index == selected {
-			arrow, color = "➜ ", cliui.ColorGreen
+			cursor, color = "  ❯  ", cliui.ColorGreen
 		}
-		fmt.Printf("\033[2K\r%s%s%s%s\r\n", color, arrow, item.Label, cliui.ColorReset)
+		fmt.Printf("\033[2K\r%s%s%s%s\r\n", color, cursor, item.Label, cliui.ColorReset)
 	}
+}
+
+func renderMenuHeader(writer io.Writer, manifest Manifest, online bool, updateErr error) {
+	version := strings.TrimPrefix(flexberry.Version, "v")
+	fmt.Fprintf(writer, "\r\n%s╭─ FLEXBERRY CLI%s\r\n", cliui.ColorBlue, cliui.ColorReset)
+	fmt.Fprintf(writer, "%s│%s Versão instalada  %sv%s%s\r\n",
+		cliui.ColorBlue, cliui.ColorReset, cliui.ColorCyan, version, cliui.ColorReset)
+	if manifest.Message != "" {
+		fmt.Fprintf(writer, "%s│%s %s%s%s\r\n",
+			cliui.ColorBlue, cliui.ColorReset, cliui.ColorGray, manifest.Message, cliui.ColorReset)
+	}
+	fmt.Fprintf(writer, "%s╰────────────────────────────────────────────────────────%s\r\n",
+		cliui.ColorBlue, cliui.ColorReset)
+	if !online {
+		fmt.Fprintf(writer, "\r\n%s⚠ Menu online indisponível; usando opções locais.%s\r\n",
+			cliui.ColorYellow, cliui.ColorReset)
+	}
+	if updateErr != nil {
+		fmt.Fprintf(writer, "\r\n%s⚠ Não foi possível verificar se há uma nova versão.%s\r\n",
+			cliui.ColorYellow, cliui.ColorReset)
+	}
+	fmt.Fprintf(writer, "\r\n%s↑/↓%s navegar  %s•%s  %sEnter%s selecionar  %s•%s  %sCtrl+C%s sair\r\n",
+		cliui.ColorCyan, cliui.ColorReset,
+		cliui.ColorGray, cliui.ColorReset,
+		cliui.ColorCyan, cliui.ColorReset,
+		cliui.ColorGray, cliui.ColorReset,
+		cliui.ColorCyan, cliui.ColorReset)
+	fmt.Fprintf(writer, "\r\n%sAÇÕES DISPONÍVEIS%s\r\n\r\n", cliui.ColorGray, cliui.ColorReset)
 }
 
 func normalizeCommand(value string) string {

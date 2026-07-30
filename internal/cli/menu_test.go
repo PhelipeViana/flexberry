@@ -4,7 +4,10 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/PhelipeViana/flexberry"
 )
 
 func TestLoadManifestUsesOnlineEnabledOptions(t *testing.T) {
@@ -26,6 +29,22 @@ func TestLoadManifestUsesOnlineEnabledOptions(t *testing.T) {
 	}
 	if len(manifest.Items) != 1 || manifest.Items[0].Command != "orm sync" {
 		t.Fatalf("opções inesperadas: %#v", manifest.Items)
+	}
+}
+
+func TestRenderMenuHeaderShowsInstalledVersion(t *testing.T) {
+	previousVersion := flexberry.Version
+	flexberry.Version = "0.1.0-alpha.16"
+	t.Cleanup(func() {
+		flexberry.Version = previousVersion
+	})
+
+	var output strings.Builder
+	renderMenuHeader(&output, Manifest{Message: "Versão experimental"}, true, nil)
+
+	if !strings.Contains(output.String(), "Versão instalada") ||
+		!strings.Contains(output.String(), "v0.1.0-alpha.16") {
+		t.Fatalf("cabeçalho não exibe a versão instalada: %q", output.String())
 	}
 }
 

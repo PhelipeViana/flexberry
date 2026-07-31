@@ -27,8 +27,22 @@ func TestLoadManifestUsesOnlineEnabledOptions(t *testing.T) {
 	if !online {
 		t.Fatal("manifesto online não foi aceito")
 	}
-	if len(manifest.Items) != 1 || manifest.Items[0].Command != "orm sync" {
+	if len(manifest.Items) != 3 || manifest.Items[0].Command != "menu migration" ||
+		manifest.Items[1].Command != "self update" || manifest.Items[2].Command != "exit" {
 		t.Fatalf("opções inesperadas: %#v", manifest.Items)
+	}
+}
+
+func TestMigrationMenuIsSimple(t *testing.T) {
+	items := migrationMenuItems()
+	want := []string{"migrate reload", "migrate run", "migrate create-blank", "migrate create", "migrate fresh", "exit"}
+	if len(items) != len(want) {
+		t.Fatalf("quantidade inesperada: %#v", items)
+	}
+	for index, command := range want {
+		if items[index].Command != command {
+			t.Fatalf("opção %d: obtido %q, esperado %q", index, items[index].Command, command)
+		}
 	}
 }
 

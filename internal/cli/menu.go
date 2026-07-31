@@ -19,22 +19,26 @@ import (
 const DefaultMenuURL = "https://raw.githubusercontent.com/PhelipeViana/flexberry/main/config/menu.json"
 
 var allowedCommands = map[string]bool{
-	"connection report": true,
-	"config install":    true,
-	"config update":     true,
-	"config remove":     true,
-	"orm sync":          true,
-	"orm reload":        true,
-	"orm run":           true,
-	"migrate reload":    true,
-	"migrate run":       true,
-	"factory create":    true,
-	"factory reload":    true,
-	"factory run":       true,
-	"version":           true,
-	"help":              true,
-	"self update":       true,
-	"exit":              true,
+	"menu migration":       true,
+	"connection report":    true,
+	"config install":       true,
+	"config update":        true,
+	"config remove":        true,
+	"orm sync":             true,
+	"orm reload":           true,
+	"orm run":              true,
+	"migrate reload":       true,
+	"migrate create-blank": true,
+	"migrate run":          true,
+	"migrate run-all":      true,
+	"migrate fresh":        true,
+	"factory create":       true,
+	"factory reload":       true,
+	"factory run":          true,
+	"version":              true,
+	"help":                 true,
+	"self update":          true,
+	"exit":                 true,
 }
 
 type Manifest struct {
@@ -71,11 +75,39 @@ func LoadManifest(ctx context.Context) (Manifest, bool) {
 	if err := decoder.Decode(&manifest); err != nil || validateManifest(manifest) != nil {
 		return fallbackManifest(), false
 	}
-	manifest.Items = enabledItems(manifest.Items)
+	manifest.Items = rootMenuItems()
 	if len(manifest.Items) == 0 {
 		return fallbackManifest(), false
 	}
 	return manifest, true
+}
+
+func ensureMigrationActions(items []MenuEntry) []MenuEntry {
+	required := []MenuEntry{
+		{Label: "MIGRATE RUN ALL (todos os bancos)", Command: "migrate run-all", Enabled: true},
+		{Label: "MIGRATE Fresh (apaga e recria o banco padrão)", Command: "migrate fresh", Enabled: true},
+	}
+	existing := make(map[string]bool, len(items))
+	for _, item := range items {
+		existing[normalizeCommand(item.Command)] = true
+	}
+	insertAt := len(items)
+	for index, item := range items {
+		if normalizeCommand(item.Command) == "exit" {
+			insertAt = index
+			break
+		}
+	}
+	for _, item := range required {
+		if existing[item.Command] {
+			continue
+		}
+		items = append(items, MenuEntry{})
+		copy(items[insertAt+1:], items[insertAt:])
+		items[insertAt] = item
+		insertAt++
+	}
+	return items
 }
 
 func Select() (string, error) {
@@ -104,7 +136,8 @@ func Select() (string, error) {
 
 	renderMenuHeader(os.Stdout, manifest, online, updateErr)
 	selected := 0
-	render(manifest.Items, selected)
+	items := manifest.Items
+	render(items, selected)
 	buffer := make([]byte, 3)
 	for {
 		n, readErr := os.Stdin.Read(buffer)
@@ -114,19 +147,31 @@ func Select() (string, error) {
 		key := buffer[:n]
 		switch {
 		case len(key) == 1 && (key[0] == '\r' || key[0] == '\n'):
+			command := items[selected].Command
+			if command == "menu migration" {
+				fmt.Printf("\033[%dA\r", len(items))
+				for range items {
+					fmt.Print("\033[2K\r\n")
+				}
+				fmt.Printf("\033[%dA\r", len(items))
+				items = migrationMenuItems()
+				selected = 0
+				render(items, selected)
+				continue
+			}
 			fmt.Print("\r\n")
-			return manifest.Items[selected].Command, nil
+			return command, nil
 		case len(key) == 1 && key[0] == 3:
 			return "exit", nil
 		case arrowUp(key):
-			selected = (selected - 1 + len(manifest.Items)) % len(manifest.Items)
+			selected = (selected - 1 + len(items)) % len(items)
 		case arrowDown(key):
-			selected = (selected + 1) % len(manifest.Items)
+			selected = (selected + 1) % len(items)
 		default:
 			continue
 		}
-		fmt.Printf("\033[%dA\r", len(manifest.Items))
-		render(manifest.Items, selected)
+		fmt.Printf("\033[%dA\r", len(items))
+		render(items, selected)
 	}
 }
 
@@ -147,17 +192,26 @@ func validateManifest(manifest Manifest) error {
 }
 
 func fallbackManifest() Manifest {
-	return Manifest{Version: 1, Message: "Ferramentas do projeto", Items: []MenuEntry{
-		{Label: "Connection (relatório das conexões do YAML)", Command: "connection report", Enabled: true},
-		{Label: "MIGRATE Reload (atualiza e recria)", Command: "migrate reload", Enabled: true},
-		{Label: "MIGRATE Run (roda a atualização)", Command: "migrate run", Enabled: true},
-		{Label: "Factories Reload (atualiza e recria)", Command: "factory reload", Enabled: true},
-		{Label: "Factories Run (executa as factories)", Command: "factory run", Enabled: true},
-		{Label: "ORM Reload (atualiza e recria)", Command: "orm reload", Enabled: true},
-		{Label: "ORM Run (roda a atualização)", Command: "orm run", Enabled: true},
-		{Label: "Flexberry Init (instala ou repara a configuração)", Command: "config install", Enabled: true},
+	return Manifest{Version: 1, Message: "Ferramentas do projeto", Items: rootMenuItems()}
+}
+
+func rootMenuItems() []MenuEntry {
+	return []MenuEntry{
+		{Label: "Migration Options", Command: "menu migration", Enabled: true},
+		{Label: "Atualizar Flexberry", Command: "self update", Enabled: true},
 		{Label: "Sair", Command: "exit", Enabled: true},
-	}}
+	}
+}
+
+func migrationMenuItems() []MenuEntry {
+	return []MenuEntry{
+		{Label: "Reload Migration", Command: "migrate reload", Enabled: true},
+		{Label: "Run Migration", Command: "migrate run", Enabled: true},
+		{Label: "Create Blank Migration", Command: "migrate create-blank", Enabled: true},
+		{Label: "Create Method Migration", Command: "migrate create", Enabled: true},
+		{Label: "Fresh Migration", Command: "migrate fresh", Enabled: true},
+		{Label: "Sair", Command: "exit", Enabled: true},
+	}
 }
 
 func enabledItems(items []MenuEntry) []MenuEntry {

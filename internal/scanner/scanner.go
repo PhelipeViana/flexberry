@@ -79,6 +79,11 @@ func scan(projectRoot string, cfg *config.Config, lenient bool) (Result, error) 
 	}
 	sort.Strings(files)
 	if len(files) == 0 {
+		if lenient {
+			return Result{Warnings: []string{
+				"nenhum arquivo encontrado em entities.paths; pastas e arquivos gerados existentes foram preservados",
+			}}, nil
+		}
 		return Result{}, fmt.Errorf("nenhum arquivo encontrado em entities.paths")
 	}
 
@@ -284,6 +289,10 @@ func mapStruct(fileSet *token.FileSet, packageName, importPath, relative, name s
 			return Entity{}, false, err
 		}
 		dbColumn := structTag(field, "db")
+		migrationOptions, err := parseMigrateTag(structTag(field, "migrate"))
+		if err != nil {
+			return Entity{}, false, fmt.Errorf("%s.%s: tag migrate inválida: %w", name, field.Names[0].Name, err)
+		}
 
 		for _, fieldName := range field.Names {
 			if !fieldName.IsExported() {
@@ -291,10 +300,14 @@ func mapStruct(fileSet *token.FileSet, packageName, importPath, relative, name s
 			}
 			if dbColumn != "" && dbColumn != "-" {
 				entity.Fields = append(entity.Fields, Field{
-					Name:     fieldName.Name,
-					Column:   strings.Split(dbColumn, ",")[0],
-					GoType:   goType,
-					Nullable: isPointer(field.Type),
+					Name:       fieldName.Name,
+					Column:     strings.Split(dbColumn, ",")[0],
+					GoType:     goType,
+					Nullable:   isPointer(field.Type) || migrationOptions.Nullable,
+					PrimaryKey: migrationOptions.PrimaryKey, AutoIncrement: migrationOptions.AutoIncrement,
+					Unique: migrationOptions.Unique, Index: migrationOptions.Index, Length: migrationOptions.Length,
+					Precision: migrationOptions.Precision, Scale: migrationOptions.Scale, Default: migrationOptions.Default,
+					ReferenceTable: migrationOptions.ReferenceTable, ReferenceColumn: migrationOptions.ReferenceColumn,
 				})
 				continue
 			}
@@ -307,12 +320,90 @@ func mapStruct(fileSet *token.FileSet, packageName, importPath, relative, name s
 		return Entity{}, false, nil
 	}
 
-	entity.PrimaryKey = inferPrimaryKey(name, entity.Fields)
+	for _, field := range entity.Fields {
+		if field.PrimaryKey {
+			entity.PrimaryKey = field.Column
+			break
+		}
+	}
+	if entity.PrimaryKey == "" {
+		entity.PrimaryKey = inferPrimaryKey(name, entity.Fields)
+	}
 	for index := range entity.Fields {
-		entity.Fields[index].PrimaryKey = entity.Fields[index].Column == entity.PrimaryKey
+		entity.Fields[index].PrimaryKey = entity.Fields[index].PrimaryKey || entity.Fields[index].Column == entity.PrimaryKey
 	}
 	entity.Relations = inferRelations(entity.Fields, relationCandidates)
 	return entity, true, nil
+}
+
+type migrateTagOptions struct {
+	Nullable, PrimaryKey, AutoIncrement, Unique, Index bool
+	Length, Precision, Scale                           int
+	Default, ReferenceTable, ReferenceColumn           string
+}
+
+func parseMigrateTag(value string) (migrateTagOptions, error) {
+	var result migrateTagOptions
+	if strings.TrimSpace(value) == "" {
+		return result, nil
+	}
+	for _, raw := range strings.Split(value, ",") {
+		part := strings.TrimSpace(raw)
+		key, val, hasValue := strings.Cut(part, "=")
+		switch key {
+		case "primaryKey":
+			result.PrimaryKey = true
+		case "autoIncrement":
+			result.AutoIncrement = true
+		case "nullable":
+			result.Nullable = true
+		case "unique":
+			result.Unique = true
+		case "index":
+			result.Index = true
+		case "size", "precision", "scale":
+			if !hasValue {
+				return result, fmt.Errorf("%s exige um valor", key)
+			}
+			number, err := strconv.Atoi(val)
+			if err != nil || number <= 0 {
+				return result, fmt.Errorf("%s precisa ser inteiro positivo", key)
+			}
+			if key == "size" {
+				result.Length = number
+			} else if key == "precision" {
+				result.Precision = number
+			} else {
+				result.Scale = number
+			}
+		case "default":
+			if !hasValue || val == "" {
+				return result, fmt.Errorf("default exige um valor")
+			}
+			result.Default = val
+		case "references":
+			if !hasValue {
+				return result, fmt.Errorf("references exige tabela.coluna")
+			}
+			ref := strings.Split(val, ".")
+			if len(ref) != 2 || ref[0] == "" || ref[1] == "" {
+				return result, fmt.Errorf("references deve usar tabela.coluna")
+			}
+			result.ReferenceTable, result.ReferenceColumn = ref[0], ref[1]
+		default:
+			return result, fmt.Errorf("opção %q não é reconhecida", key)
+		}
+	}
+	if result.AutoIncrement && !result.PrimaryKey {
+		return result, fmt.Errorf("autoIncrement exige primaryKey")
+	}
+	if result.Scale > 0 && result.Precision == 0 {
+		return result, fmt.Errorf("scale exige precision")
+	}
+	if result.Scale >= result.Precision && result.Precision > 0 {
+		return result, fmt.Errorf("scale precisa ser menor que precision")
+	}
+	return result, nil
 }
 
 func inferPrimaryKey(entityName string, fields []Field) string {
@@ -352,9 +443,11 @@ func relationCandidate(name string, expression ast.Expr, goType string) (Relatio
 func inferRelations(fields []Field, candidates []Relation) []Relation {
 	var relations []Relation
 	for _, relation := range candidates {
-		expected := strings.ToLower(relation.Name + "Id")
+		expectedSuffix := strings.ToLower(relation.Name + "Id")
+		expectedPrefix := strings.ToLower("Id" + relation.Name)
 		for _, field := range fields {
-			if strings.ToLower(field.Name) == expected {
+			fieldName := strings.ToLower(field.Name)
+			if fieldName == expectedSuffix || fieldName == expectedPrefix {
 				relation.ForeignKey = field.Column
 				break
 			}
@@ -392,7 +485,7 @@ func applyOverride(entity *Entity, overrides map[string]config.EntityOverride) {
 		break
 	}
 	for index := range entity.Fields {
-		entity.Fields[index].PrimaryKey = entity.Fields[index].Column == entity.PrimaryKey
+		entity.Fields[index].PrimaryKey = entity.Fields[index].PrimaryKey || entity.Fields[index].Column == entity.PrimaryKey
 	}
 }
 

@@ -113,3 +113,40 @@ func TestRunPreservesExistingRootEnv(t *testing.T) {
 		t.Fatal(".env não foi incluído no .gitignore")
 	}
 }
+
+func TestRunForceRecreatesConfigurationsAndPreservesEnv(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, filepath.FromSlash(config.ORMRelativePath))
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("configuração antiga\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	envPath := filepath.Join(root, ".env")
+	if err := os.WriteFile(envPath, []byte("SEGREDO=mantido\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Run(root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != ORMConfigTemplateV2 {
+		t.Fatal("configuração não foi recriada no modo force")
+	}
+	env, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(env) != "SEGREDO=mantido\n" {
+		t.Fatal("credenciais foram sobrescritas no modo force")
+	}
+	if len(result.Repaired) == 0 {
+		t.Fatal("arquivo recriado não foi informado")
+	}
+}

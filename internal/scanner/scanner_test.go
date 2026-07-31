@@ -9,6 +9,34 @@ import (
 	"github.com/PhelipeViana/flexberry/internal/config"
 )
 
+func TestInferRelationsAcceptsLegacyIDPrefix(t *testing.T) {
+	relations := inferRelations(
+		[]Field{{Name: "IDStatus", Column: "id_status", GoType: "int64"}},
+		[]Relation{{Name: "Status", Type: "StatusCidade", Kind: "belongsTo"}},
+	)
+	if len(relations) != 1 || relations[0].ForeignKey != "id_status" {
+		t.Fatalf("legacy ID prefix relation was not inferred: %#v", relations)
+	}
+}
+
+func TestParseMigrateTag(t *testing.T) {
+	value, err := parseMigrateTag("primaryKey,autoIncrement,size=150,unique,index,default=true,references=clientes.id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !value.PrimaryKey || !value.AutoIncrement || !value.Unique || !value.Index || value.Length != 150 || value.Default != "true" || value.ReferenceTable != "clientes" || value.ReferenceColumn != "id" {
+		t.Fatalf("unexpected migrate tag: %#v", value)
+	}
+}
+
+func TestParseMigrateTagRejectsInvalidOptions(t *testing.T) {
+	for _, tag := range []string{"unknown", "size=zero", "autoIncrement", "scale=4", "references=clientes"} {
+		if _, err := parseMigrateTag(tag); err == nil {
+			t.Errorf("tag %q should fail", tag)
+		}
+	}
+}
+
 func TestScanLenientWarnsAndSkipsEntityWithEmptyInternalImport(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "go.mod"), "module example.test/app\n")
@@ -74,6 +102,25 @@ func TestScanLenientWarnsAboutEmptyAndUnmappedFiles(t *testing.T) {
 	joined := strings.Join(result.Warnings, "\n")
 	if !strings.Contains(joined, "arquivo vazio") || !strings.Contains(joined, "campos mapeados") {
 		t.Fatalf("alertas incompletos: %s", joined)
+	}
+}
+
+func TestScanLenientTreatsMissingEntityFoldersAsWarning(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "go.mod"), "module example.test/app\n")
+	cfg := &config.Config{Entities: config.EntitiesConfig{
+		Paths: []string{"internal/modules/**/domain/*.go"},
+	}}
+
+	result, err := ScanLenient(root, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Entities) != 0 || len(result.Warnings) != 1 {
+		t.Fatalf("plano tolerante inesperado: %#v", result)
+	}
+	if !strings.Contains(result.Warnings[0], "preservados") {
+		t.Fatalf("alerta deveria registrar preservação: %s", result.Warnings[0])
 	}
 }
 

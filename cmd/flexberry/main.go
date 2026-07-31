@@ -24,6 +24,7 @@ import (
 	"github.com/PhelipeViana/flexberry/internal/project"
 	"github.com/PhelipeViana/flexberry/internal/scanner"
 	"github.com/PhelipeViana/flexberry/internal/selfupdate"
+	"github.com/PhelipeViana/flexberry/internal/sqlimport"
 )
 
 func main() {
@@ -104,8 +105,21 @@ func runSelfUpdate() error {
 		return fmt.Errorf("verificar atualização: %w", err)
 	}
 	if !outdated {
+		if root, rootErr := project.FindRoot("."); rootErr == nil {
+			if dependencyErr := installProjectDependency(root); dependencyErr != nil {
+				return fmt.Errorf("atualizar dependência do projeto: %w", dependencyErr)
+			}
+			fmt.Println(cliui.Success("✓ Dependência Go e go.mod do projeto sincronizados."))
+		}
 		fmt.Println(cliui.Success("✓ O Flexberry já está atualizado."))
 		return nil
+	}
+	if root, rootErr := project.FindRoot("."); rootErr == nil {
+		fmt.Printf("%s\n", cliui.Info(fmt.Sprintf("→ Sincronizando dependência Go com Flexberry %s...", release.Version)))
+		if dependencyErr := installProjectDependencyVersion(root, release.Version); dependencyErr != nil {
+			return fmt.Errorf("atualizar dependência do projeto: %w", dependencyErr)
+		}
+		fmt.Println(cliui.Success("✓ Dependência Go e go.mod do projeto sincronizados."))
 	}
 	fmt.Printf("%s\n", cliui.Info(fmt.Sprintf("→ Baixando Flexberry %s...", release.Version)))
 	path, err := selfupdate.Install(ctx, release)
@@ -219,33 +233,52 @@ func configureProject(title string, args []string) error {
 }
 
 func installProjectDependency(root string) error {
-	version := strings.TrimPrefix(flexberry.Version, "v")
+	return installProjectDependencyVersion(root, flexberry.Version)
+}
+
+func installProjectDependencyVersion(root, targetVersion string) error {
+	version := strings.TrimPrefix(targetVersion, "v")
 	moduleVersion := "github.com/PhelipeViana/flexberry@v" + version
 	output, err := runGoGet(root, moduleVersion, nil)
-	if err == nil {
-		return nil
-	}
-
-	detail := strings.TrimSpace(string(output))
-	if strings.Contains(detail, "unknown revision") || strings.Contains(detail, "404 Not Found") {
-		directEnv := []string{
-			"GOPROXY=direct",
-			"GONOSUMDB=github.com/PhelipeViana/flexberry",
+	if err != nil {
+		detail := strings.TrimSpace(string(output))
+		if strings.Contains(detail, "unknown revision") || strings.Contains(detail, "404 Not Found") {
+			directEnv := []string{
+				"GOPROXY=direct",
+				"GONOSUMDB=github.com/PhelipeViana/flexberry",
+			}
+			directOutput, directErr := runGoGet(root, moduleVersion, directEnv)
+			if directErr != nil {
+				directDetail := strings.TrimSpace(string(directOutput))
+				if directDetail != "" {
+					return fmt.Errorf("a versão v%s ainda não está disponível: %s", version, directDetail)
+				}
+				return fmt.Errorf("a versão v%s ainda não está disponível; tente novamente em alguns minutos", version)
+			}
+		} else {
+			if detail == "" {
+				detail = err.Error()
+			}
+			return fmt.Errorf("não foi possível instalar a dependência: %s", detail)
 		}
-		directOutput, directErr := runGoGet(root, moduleVersion, directEnv)
-		if directErr == nil {
-			return nil
-		}
-		directDetail := strings.TrimSpace(string(directOutput))
-		if directDetail != "" {
-			return fmt.Errorf("a versão v%s ainda não está disponível: %s", version, directDetail)
-		}
-		return fmt.Errorf("a versão v%s ainda não está disponível; tente novamente em alguns minutos", version)
 	}
-	if detail == "" {
-		detail = err.Error()
+	if output, err := runGoModTidy(root); err != nil {
+		detail := strings.TrimSpace(string(output))
+		if detail == "" {
+			detail = err.Error()
+		}
+		return fmt.Errorf("sincronizar go.mod: %s", detail)
 	}
-	return fmt.Errorf("não foi possível instalar a dependência: %s", detail)
+	// tidy removes requirements that are not imported yet. Flexberry must remain
+	// direct even in a freshly initialized project with no migration files.
+	if output, err := runGoModRequire(root, moduleVersion); err != nil {
+		detail := strings.TrimSpace(string(output))
+		if detail == "" {
+			detail = err.Error()
+		}
+		return fmt.Errorf("registrar dependência no go.mod: %s", detail)
+	}
+	return nil
 }
 
 func runGoGet(root, moduleVersion string, extraEnv []string) ([]byte, error) {
@@ -254,6 +287,18 @@ func runGoGet(root, moduleVersion string, extraEnv []string) ([]byte, error) {
 	if len(extraEnv) > 0 {
 		command.Env = append(os.Environ(), extraEnv...)
 	}
+	return command.CombinedOutput()
+}
+
+func runGoModTidy(root string) ([]byte, error) {
+	command := exec.Command("go", "mod", "tidy")
+	command.Dir = root
+	return command.CombinedOutput()
+}
+
+func runGoModRequire(root, moduleVersion string) ([]byte, error) {
+	command := exec.Command("go", "mod", "edit", "-require="+moduleVersion)
+	command.Dir = root
 	return command.CombinedOutput()
 }
 
@@ -377,26 +422,168 @@ func runMigrate(args []string) error {
 		return err
 	}
 	switch args[0] {
-	case "reload":
-		base.Entities = migrateConfig.Entities
-		scanned, err := scanner.Scan(root, base)
+	case "validate":
+		count, err := migraterun.Validate(root, migrateConfig)
 		if err != nil {
 			return err
 		}
-		result, err := migrategen.Generate(root, migrateConfig, scanned.Entities)
+		fmt.Printf("%s %d migration(s) válidas; nenhuma conexão foi aberta.\n", cliui.Success("✓ Pré-validação concluída:"), count)
+		return nil
+	case "import-sql":
+		flags := flag.NewFlagSet("migrate import-sql", flag.ContinueOnError)
+		postgresPath := flags.String("postgres", "", "pasta das migrations PostgreSQL")
+		replace := flags.Bool("replace", false, "substitui somente uma baseline previamente gerada")
+		if err := flags.Parse(args[1:]); err != nil {
+			return err
+		}
+		if strings.TrimSpace(*postgresPath) == "" {
+			return fmt.Errorf("use migrate import-sql --postgres <pasta>")
+		}
+		source, err := filepath.Abs(*postgresPath)
+		if err != nil {
+			return err
+		}
+		result, err := sqlimport.ReadPostgres(source)
+		if err != nil {
+			return fmt.Errorf("ler migrations SQL: %w", err)
+		}
+		if len(result.Unsupported) > 0 {
+			limit := len(result.Unsupported)
+			if limit > 20 {
+				limit = 20
+			}
+			for _, issue := range result.Unsupported[:limit] {
+				fmt.Printf("  - %s\n", issue)
+			}
+			return fmt.Errorf("importação interrompida: %d comando(s) SQL ainda não suportado(s)", len(result.Unsupported))
+		}
+		modulePath, err := sqlimport.ModulePath(root)
+		if err != nil {
+			return err
+		}
+		output := filepath.Join(root, filepath.FromSlash(migrateConfig.Output.Path))
+		if *replace {
+			if err := sqlimport.ClearGeneratedBaseline(output); err != nil {
+				return err
+			}
+		}
+		files, err := sqlimport.WriteBaseline(root, output, modulePath, result)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s %d migration(s) gerada(s) a partir de %d tabela(s), %d constraint(s), %d índice(s) e %d view(s).\n", cliui.Success("✓ Importação SQL concluída:"), len(files), len(result.Tables), len(result.Constraints), len(result.Indexes), len(result.Views))
+		if result.IgnoredData > 0 {
+			fmt.Printf("%s %d comando(s) de dados ignorado(s) na baseline.\n", cliui.Warning("⚠"), result.IgnoredData)
+		}
+		if len(result.IgnoredSequences) > 0 {
+			fmt.Printf("%s sequences sem uso direto ignoradas: %s\n", cliui.Warning("⚠"), strings.Join(result.IgnoredSequences, ", "))
+		}
+		if len(result.NormalizedColumns) > 0 {
+			fmt.Printf("%s %d coluna(s) compatibilizada(s) entre foreign keys para os quatro dialetos.\n", cliui.Warning("⚠"), len(result.NormalizedColumns))
+		}
+		return nil
+	case "create-blank":
+		path, err := migrategen.CreateBlank(root, migrateConfig)
+		if err != nil {
+			return fmt.Errorf("criar migration vazia: %w", err)
+		}
+		fmt.Printf("%s %s\n", cliui.Success("✓ Migration vazia criada:"), path)
+		return nil
+	case "create":
+		path, err := migrategen.CreateManual(root, migrateConfig)
+		if err != nil {
+			return fmt.Errorf("criar migration manual: %w", err)
+		}
+		fmt.Printf("%s %s\n", cliui.Success("✓ Migration provisória criada:"), path)
+		return nil
+	case "reload":
+		base.Entities = migrateConfig.Entities
+		scanned, err := scanner.ScanLenient(root, base)
+		if err != nil {
+			return err
+		}
+		result, err := migrategen.GenerateFromScan(root, migrateConfig, scanned)
+		if err != nil {
+			return err
+		}
+		docPath, documented, err := migrategen.WriteEntityDocumentation(root, migrateConfig, scanned.Entities...)
 		if err != nil {
 			return err
 		}
 		if result.Unchanged {
 			fmt.Println(cliui.Muted("✓ Migrate Reload: não houve modificação nas entidades monitoradas."))
+			fmt.Printf("%s %s (%d entidade(s))\n", cliui.Success("✓ Documentação das entidades atualizada:"), docPath, documented)
+			printScanWarnings(scanned.Warnings)
 			return nil
 		}
-		fmt.Printf("%s %s (%d operação(ões))\n", cliui.Success("✓ Migration gerada:"), result.Path, result.Operations)
+		fmt.Printf("%s %d arquivo(s), uma ação por migration:\n", cliui.Success("✓ Migrations geradas:"), len(result.Paths))
+		for _, path := range result.Paths {
+			fmt.Printf("  + %s\n", path)
+		}
+		fmt.Printf("%s %s (%d entidade(s))\n", cliui.Success("✓ Documentação das entidades atualizada:"), docPath, documented)
+		printScanWarnings(scanned.Warnings)
 		return nil
 	case "run":
+		base.Entities = migrateConfig.Entities
+		scanned, scanErr := scanner.ScanLenient(root, base)
+		if scanErr != nil {
+			return fmt.Errorf("planejar execução das migrations: %w", scanErr)
+		}
+		printScanWarnings(scanned.Warnings)
 		return migraterun.Run(root, base, migrateConfig)
+	case "run-all":
+		base.Entities = migrateConfig.Entities
+		scanned, scanErr := scanner.ScanLenient(root, base)
+		if scanErr != nil {
+			return fmt.Errorf("planejar execução das migrations: %w", scanErr)
+		}
+		printScanWarnings(scanned.Warnings)
+		return migraterun.RunAll(root, base, migrateConfig)
+	case "fresh":
+		if err := migraterun.ValidateFreshEnvironment(root, base); err != nil {
+			return err
+		}
+		flags := flag.NewFlagSet("migrate fresh", flag.ContinueOnError)
+		force := flags.Bool("force", false, "recria sem confirmação")
+		if err := flags.Parse(args[1:]); err != nil {
+			return err
+		}
+		if !*force {
+			fmt.Print(cliui.Warning("⚠ Esta operação apagará as tabelas gerenciadas no banco padrão. Continuar? [s/N]: "))
+			var answer string
+			if _, err := fmt.Scanln(&answer); err != nil {
+				return fmt.Errorf("confirmação não recebida")
+			}
+			answer = strings.ToLower(strings.TrimSpace(answer))
+			if answer != "s" && answer != "sim" {
+				fmt.Println("Fresh cancelado.")
+				return nil
+			}
+		}
+		return migraterun.Fresh(root, base, migrateConfig)
+	case "fresh-all":
+		if err := migraterun.ValidateFreshEnvironment(root, base); err != nil {
+			return err
+		}
+		flags := flag.NewFlagSet("migrate fresh-all", flag.ContinueOnError)
+		force := flags.Bool("force", false, "recria os quatro bancos sem confirmação")
+		if err := flags.Parse(args[1:]); err != nil {
+			return err
+		}
+		if !*force {
+			fmt.Print(cliui.Warning("⚠ Esta operação apagará as tabelas gerenciadas nos quatro bancos de desenvolvimento. Digite RECRIAR: "))
+			var answer string
+			if _, err := fmt.Scanln(&answer); err != nil {
+				return fmt.Errorf("confirmação não recebida")
+			}
+			if strings.TrimSpace(answer) != "RECRIAR" {
+				fmt.Println("Fresh All cancelado.")
+				return nil
+			}
+		}
+		return migraterun.FreshAll(root, base, migrateConfig)
 	default:
-		return fmt.Errorf("ação de migrate %q desconhecida; use migrate reload ou migrate run", args[0])
+		return fmt.Errorf("ação de migrate %q desconhecida; use create, reload, run, run-all ou fresh", args[0])
 	}
 }
 
@@ -412,17 +599,6 @@ func runConnection(args []string) error {
 }
 
 func reloadORM(args []string) error {
-	root, err := project.FindRoot(".")
-	if err != nil {
-		return err
-	}
-	ormConfig, err := config.LoadORM(filepath.Join(root, filepath.FromSlash(config.ORMRelativePath)))
-	if err != nil {
-		return err
-	}
-	if err := removeConfiguredPath(root, ormConfig.Output.Path); err != nil {
-		return fmt.Errorf("recriar ORM: %w", err)
-	}
 	return runGenerate(args)
 }
 
@@ -471,6 +647,9 @@ func createFactories() error {
 	if err != nil {
 		return err
 	}
+	if preserveEmptyPlan(value.scan) {
+		return nil
+	}
 	result, err := syncFactories(value)
 	if err != nil {
 		return err
@@ -500,6 +679,9 @@ func executeFactories() error {
 	value, err := loadFactoryProject()
 	if err != nil {
 		return err
+	}
+	if preserveEmptyPlan(value.scan) {
+		return nil
 	}
 	if _, err := syncFactories(value); err != nil {
 		return err
@@ -531,11 +713,20 @@ func printScanWarnings(warnings []string) {
 		return
 	}
 	fmt.Println()
-	fmt.Println(cliui.Warning("⚠ Entidades ignoradas:"))
+	fmt.Printf("%s\n", cliui.Warning(fmt.Sprintf("⚠ Exceções ignoradas no plano (%d):", len(warnings))))
 	for _, warning := range warnings {
 		fmt.Printf("  → %s\n", warning)
 	}
 	fmt.Println(cliui.Muted("  As demais entidades continuaram normalmente."))
+}
+
+func preserveEmptyPlan(scan scanner.Result) bool {
+	if len(scan.Entities) > 0 || len(scan.Warnings) == 0 {
+		return false
+	}
+	printScanWarnings(scan.Warnings)
+	fmt.Println(cliui.Muted("  Nenhuma entidade válida no plano; arquivos gerados existentes foram preservados."))
+	return true
 }
 
 func runGenerate(args []string) error {
@@ -569,6 +760,9 @@ func runGenerate(args []string) error {
 	result, err := scanner.ScanLenient(root, cfg)
 	if err != nil {
 		return err
+	}
+	if preserveEmptyPlan(result) {
+		return nil
 	}
 	files, err := generator.Build(cfg, result)
 	if err != nil {

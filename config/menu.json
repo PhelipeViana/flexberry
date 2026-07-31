@@ -3,43 +3,13 @@
   "message": "Versão experimental",
   "items": [
     {
-      "label": "Connection (relatório das conexões do YAML)",
-      "command": "connection report",
+      "label": "Migration Options",
+      "command": "menu migration",
       "enabled": true
     },
     {
-      "label": "MIGRATE Reload (atualiza e recria)",
-      "command": "migrate reload",
-      "enabled": true
-    },
-    {
-      "label": "MIGRATE Run (roda a atualização)",
-      "command": "migrate run",
-      "enabled": true
-    },
-    {
-      "label": "Factories Reload (atualiza e recria)",
-      "command": "factory reload",
-      "enabled": true
-    },
-    {
-      "label": "Factories Run (executa as factories)",
-      "command": "factory run",
-      "enabled": true
-    },
-    {
-      "label": "ORM Reload (atualiza e recria)",
-      "command": "orm reload",
-      "enabled": true
-    },
-    {
-      "label": "ORM Run (roda a atualização)",
-      "command": "orm run",
-      "enabled": true
-    },
-    {
-      "label": "Flexberry Init (instala ou repara a configuração)",
-      "command": "config install",
+      "label": "Atualizar Flexberry",
+      "command": "self update",
       "enabled": true
     },
     {

@@ -51,6 +51,8 @@ aberta automaticamente.
 
 .\flexberry.exe migrate reload
 .\flexberry.exe migrate run
+.\flexberry.exe migrate run-all
+.\flexberry.exe migrate fresh
 
 .\flexberry.exe factory reload
 .\flexberry.exe factory run
@@ -98,10 +100,45 @@ Os arquivos contêm comentários explicando cada campo.
 .\flexberry.exe orm reload
 ```
 
-`migrate reload` compara as entidades com o snapshot monitorado e cria um plano
-neutro, imutável e nomeado por timestamp. `migrate run` converte esse plano
+`migrate reload` compara as entidades com o snapshot monitorado e cria uma
+migration Go declarativa, legível e nomeada por timestamp. Ela usa uma única
+função como `migrate.CreateTable`, tabelas existentes com autocomplete em
+`alias.` e builders como `migrate.Col("id").Integer().PrimaryKey()`. O catálogo
+`dsl.gen.go` é atualizado ao planejar ou executar as migrations. `migrate run`
+interpreta apenas essa DSL
+segura e converte o plano
 para o dialeto da conexão padrão e registra o checksum em `migrations_flex`.
 Para migrar outro banco, altere `DB_DIALECT` no `.env`.
+
+No mesmo Reload, o Flexberry reproduz todo o histórico das migrations e gera
+`doc_entities.txt` na pasta configurada em `migrate.yaml > output.path`. O
+arquivo mostra structs Go prontas para copiar, com tipos, nulabilidade e tags
+`db`/`json` exatamente iguais às colunas da migration. Ele é documentação
+gerada: não deve ser editado e nunca sobrescreve entidades do domínio.
+
+Regras que não cabem nas tags convencionais `db` e `json` usam a tag
+`migrate`. O tipo Go define o tipo da coluna e ponteiros são anuláveis:
+
+```go
+type TabelaTeste struct {
+	ID        int64     `db:"id" json:"id" migrate:"primaryKey,autoIncrement"`
+	Email     *string   `db:"email" json:"email" migrate:"size=150,unique"`
+	Ativo     bool      `db:"ativo" json:"ativo" migrate:"default=true"`
+	Valor     float64   `db:"valor" json:"valor" migrate:"precision=19,scale=4"`
+	CriadoEm  time.Time `db:"criado_em" json:"criado_em" migrate:"index"`
+	ClienteID int64     `db:"cliente_id" json:"cliente_id" migrate:"references=clientes.id"`
+}
+```
+
+`primaryKey`, `autoIncrement`, `size`, `unique`, `default`, `precision`,
+`scale`, `index`, `nullable` e `references=tabela.coluna` são validados pelo
+Reload. `index` gera uma migration `CreateIndex` separada para manter a mesma
+execução nos quatro dialetos. `AutoIncrement` nunca é presumido: precisa estar
+declarado explicitamente na tag.
+
+`migrate run-all` aplica as migrations em todas as conexões configuradas.
+`migrate fresh` pede confirmação, remove somente as tabelas gerenciadas e o
+histórico do banco padrão, e então reaplica todas as migrations do zero.
 
 O package Go do ORM e das factories é inferido automaticamente pelo último
 diretório configurado em `path`; não é necessário informar `package`.

@@ -15,11 +15,11 @@ type Entity struct {
 }
 
 type Field struct {
-	Name       string
-	Column     string
-	GoType     string
-	Nullable   bool
-	PrimaryKey bool
+	Name, Column, GoType                     string
+	Nullable, PrimaryKey, AutoIncrement      bool
+	Unique, Index                            bool
+	Length, Precision, Scale                 int
+	Default, ReferenceTable, ReferenceColumn string
 }
 
 type Relation struct {

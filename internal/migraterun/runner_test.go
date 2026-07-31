@@ -2,6 +2,8 @@ package migraterun
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,9 +11,80 @@ import (
 	"github.com/PhelipeViana/flexberry/internal/migrategen"
 )
 
+func TestLoadPlansRejectsDuplicateCreateTableBeforeDatabase(t *testing.T) {
+	folder := t.TempDir()
+	template := `package migrations
+import migrate "github.com/PhelipeViana/flexberry/migration"
+func %s() migrate.Definition {
+	return migrate.Define(migrate.CreateTable("pessoas", col("id").Integer()).Alias(%q))
+}`
+	files := map[string]string{
+		"2026_07_31_100001.go": fmt.Sprintf(template, "Migration20260731100001", "pessoa"),
+		"2026_07_31_100002.go": fmt.Sprintf(template, "Migration20260731100002", "outraPessoa"),
+	}
+	for name, source := range files {
+		if err := os.WriteFile(filepath.Join(folder, name), []byte(source), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := loadPlans(folder); err == nil || !strings.Contains(err.Error(), "CreateTable duplicado") {
+		t.Fatalf("esperava pré-validação de tabela duplicada, obtido: %v", err)
+	}
+}
+
+func TestValidatePlansRejectsInvalidAndUnknownAliases(t *testing.T) {
+	invalid := []migrationFile{{Name: "invalid.go", Plan: migrategen.Plan{Operations: []migrategen.Operation{{
+		Kind: "create_table", Table: "pessoas", AliasName: "Pessoa inválida",
+		Columns: []migrategen.Column{{Name: "id", Type: "integer"}},
+	}}}}}
+	if err := validatePlans(invalid); err == nil || !strings.Contains(err.Error(), "lowerCamelCase") {
+		t.Fatalf("esperava alias inválido, obtido: %v", err)
+	}
+
+	unknown := []migrationFile{{Name: "unknown.go", Plan: migrategen.Plan{Operations: []migrategen.Operation{{
+		Kind: "add_column", Table: "naoExiste", Column: &migrategen.Column{Name: "nome", Type: "string"},
+	}}}}}
+	if err := validatePlans(unknown); err == nil || !strings.Contains(err.Error(), "não foi declarado") {
+		t.Fatalf("esperava alias desconhecido, obtido: %v", err)
+	}
+}
+
+func TestValidatePlansRejectsDuplicateAliases(t *testing.T) {
+	files := []migrationFile{
+		{Name: "pessoas.go", Plan: migrategen.Plan{Operations: []migrategen.Operation{{
+			Kind: "create_table", Table: "pessoas", AliasName: "cadastro",
+			Columns: []migrategen.Column{{Name: "id", Type: "integer"}},
+		}}}},
+		{Name: "clientes.go", Plan: migrategen.Plan{Operations: []migrategen.Operation{{
+			Kind: "create_table", Table: "clientes", AliasName: "cadastro",
+			Columns: []migrategen.Column{{Name: "id", Type: "integer"}},
+		}}}},
+	}
+	if err := validatePlans(files); err == nil || !strings.Contains(err.Error(), "alias \"cadastro\" duplicado") {
+		t.Fatalf("alias repetido deveria ser bloqueado, obtido: %v", err)
+	}
+}
+
+func TestValidateFreshEnvironmentRejectsProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	base := &config.Config{Environment: config.EnvironmentConfig{Ambient: "APP_ENV", Fallback: "production"}}
+	err := ValidateFreshEnvironment(t.TempDir(), base)
+	if err == nil || !strings.Contains(err.Error(), "development") {
+		t.Fatalf("Fresh deveria ser bloqueado em produção: %v", err)
+	}
+}
+
+func TestValidatePlansRejectsTODOBeforeDatabase(t *testing.T) {
+	files := []migrationFile{{Name: "2026_07_31_120000.go", Plan: migrategen.Plan{Operations: []migrategen.Operation{{Kind: "todo"}}}}}
+	err := validatePlans(files)
+	if err == nil || !strings.Contains(err.Error(), "migrate.TODO()") {
+		t.Fatalf("migration vazia deveria ser bloqueada: %v", err)
+	}
+}
+
 func TestCreateTableSQLSupportsAllDialects(t *testing.T) {
 	columns := []migrategen.Column{
-		{Name: "id", Type: "integer", PrimaryKey: true},
+		{Name: "id", Type: "integer", PrimaryKey: true, AutoIncrement: true},
 		{Name: "nome", Type: "string"},
 	}
 	expected := map[string]string{
@@ -28,6 +101,16 @@ func TestCreateTableSQLSupportsAllDialects(t *testing.T) {
 		if !strings.Contains(query, fragment) {
 			t.Fatalf("%s não contém %q: %s", dialect, fragment, query)
 		}
+	}
+}
+
+func TestRawCurrentUserDefaultUsesDialectSyntax(t *testing.T) {
+	column := migrategen.Column{Name: "created_by", Type: "string", Length: 100, Default: "CURRENT_USER", DefaultRaw: true, Nullable: true}
+	if got := columnDefinition("mysql", column, false); !strings.Contains(got, "DEFAULT (CURRENT_USER())") {
+		t.Fatalf("default MySQL inesperado: %s", got)
+	}
+	if got := columnDefinition("oracle", column, false); !strings.Contains(got, "DEFAULT USER") {
+		t.Fatalf("default Oracle inesperado: %s", got)
 	}
 }
 
@@ -112,5 +195,50 @@ func TestMigrationAdviceExplainsDNSFailure(t *testing.T) {
 	message, _ := migrationConnectionAdvice(connection, fmt.Errorf("lookup db.example.com: no such host"))
 	if !strings.Contains(message, "DNS") || !strings.Contains(message, "internet") {
 		t.Fatalf("diagnóstico DNS inesperado: %s", message)
+	}
+}
+
+func TestManagedTablesDropsChildrenBeforeParents(t *testing.T) {
+	files := []migrationFile{{Plan: migrategen.Plan{Operations: []migrategen.Operation{
+		{Kind: "create_table", Table: "categorias"},
+		{Kind: "create_table", Table: "produtos"},
+		{Kind: "add_foreign_key", Table: "produtos", ForeignKey: &migrategen.ForeignKey{
+			Column: "categoria_id", ReferenceTable: "categorias", ReferenceColumn: "id",
+		}},
+	}}}}
+	tables := managedTables(files)
+	if len(tables) != 2 || tables[0] != "produtos" || tables[1] != "categorias" {
+		t.Fatalf("ordem de drop insegura: %#v", tables)
+	}
+}
+
+func TestCheckExpressionSQLQuotesIdentifiersAndPreservesLiterals(t *testing.T) {
+	expression := "virtual IS NULL OR virtual IN ('S', 'N')"
+	if got := checkExpressionSQL("mysql", expression); got != "`virtual` IS NULL OR `virtual` IN ('S', 'N')" {
+		t.Fatalf("MySQL CHECK inesperado: %s", got)
+	}
+	if got := checkExpressionSQL("postgres", expression); got != `"virtual" IS NULL OR "virtual" IN ('S', 'N')` {
+		t.Fatalf("PostgreSQL CHECK inesperado: %s", got)
+	}
+	if got := checkExpressionSQL("sqlserver", "data_fim >= data_ini"); got != "[data_fim] >= [data_ini]" {
+		t.Fatalf("SQL Server CHECK inesperado: %s", got)
+	}
+}
+
+func TestViewQuerySQLTranslatesPostgresExpressions(t *testing.T) {
+	query := "SELECT EXTRACT(YEAR FROM AGE(CURRENT_DATE, p.data_nasc)), CAST(NULL AS VARCHAR(200)), CAST(NULL AS TIMESTAMP)"
+	mysql := viewQuerySQL("mysql", query)
+	for _, expected := range []string{"TIMESTAMPDIFF(YEAR, p.data_nasc, CURRENT_DATE)", "CAST(NULL AS CHAR(200))", "CAST(NULL AS DATETIME)"} {
+		if !strings.Contains(mysql, expected) {
+			t.Fatalf("tradução MySQL não contém %q: %s", expected, mysql)
+		}
+	}
+	oracle := viewQuerySQL("oracle", query)
+	if !strings.Contains(oracle, "TRUNC(MONTHS_BETWEEN(CURRENT_DATE, p.data_nasc) / 12)") || !strings.Contains(oracle, "VARCHAR2(200)") {
+		t.Fatalf("tradução Oracle inesperada: %s", oracle)
+	}
+	sqlserver := viewQuerySQL("sqlserver", query)
+	if !strings.Contains(sqlserver, "DATEDIFF(YEAR, p.data_nasc, CAST(GETDATE() AS date))") || !strings.Contains(sqlserver, "DATETIME2") {
+		t.Fatalf("tradução SQL Server inesperada: %s", sqlserver)
 	}
 }
